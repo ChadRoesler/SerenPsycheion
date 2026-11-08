@@ -146,6 +146,20 @@ def test_viewer_renders_on_the_shell():
     assert "no camera button" in page
 
 
+def test_root_is_the_family_info_route():
+    body = Body()
+    cfg = PsycheionConfig(soma=SomaConfig(robot=Endpoint(url="http://bot:8080", token=ROBOT_TOKEN),
+                                          voice=Endpoint(url="http://voice:7480", token=VOICE_TOKEN)))
+    cfg.updates.enabled = False
+    app = create_app(cfg, robot_transport=httpx.MockTransport(body.robot), voice_transport=httpx.MockTransport(body.voice))
+    with TestClient(app) as c:
+        r = c.get("/")
+    info = r.json()
+    assert r.status_code == 200 and info["service"] == "seren-psycheion" and info["viewer"] == "/viewer"
+    assert set(info["updates"]) == {"status", "distribution", "installed", "latest", "update_available", "detail", "checked_at"}
+    assert info["updates"]["status"] == "disabled"
+
+
 def test_no_route_takes_a_photo():
     with client(Body()) as c:
         paths = {route.path for route in c.app.routes}

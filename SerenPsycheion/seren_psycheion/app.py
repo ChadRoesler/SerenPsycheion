@@ -17,7 +17,7 @@ from typing import Any, Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from seren_meninges.auth import bearer_auth_middleware
 from seren_sinew.cluster.dtos import to_dict
 from seren_sinew.request_log import RequestLoggingMiddleware
@@ -78,9 +78,19 @@ def create_app(config: Optional[PsycheionConfig] = None, *,
         app.state.updates = None
         diag(f"[seren-psycheion] update checking unavailable ({exc})")
 
-    @app.get("/", include_in_schema=False)
-    async def root():
-        return RedirectResponse("/viewer")
+    @app.get("/")
+    async def root(request: Request) -> dict:
+        """The family's info route: who this is, where the page is, and the updates block, which every
+        service carries with the same seven keys whatever state its checker is in (CI pins them)."""
+        try:
+            from seren_meninges.updates import updates_payload
+            updates = await updates_payload(getattr(request.app.state, "updates", None),
+                                            distribution=NAME, installed=APP_VERSION)
+        except Exception as exc:  # noqa: BLE001 - an info route never 500s over a cosmetic check
+            updates = {"status": "unavailable", "distribution": NAME, "installed": APP_VERSION, "latest": None,
+                       "update_available": False, "checked_at": None,
+                       "detail": f"update checking could not be constructed ({exc}): pip install -U seren-psycheion"}
+        return {"service": NAME, "version": APP_VERSION, "viewer": "/viewer", "updates": updates}
 
     @app.get("/health")
     async def health():
