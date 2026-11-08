@@ -1,0 +1,94 @@
+<section class="view" id="console">
+  <div class="grid">
+    <div class="card" id="bodyCard">
+      <h3>The body</h3>
+      <div id="bodyFacts" class="facts muted">Looking…</div>
+      <div class="rails" aria-label="The light rails">
+        <div class="rail" id="railA"></div>
+        <div class="rail" id="railB"></div>
+      </div>
+      <p class="muted tiny">Each rail's first two LEDs are the truth lights: green while the mic is open,
+        blue while it speaks, red while the camera's on. Nothing can turn them off, only dim them.</p>
+    </div>
+
+    <div class="card">
+      <h3>Lights, sound, screen</h3>
+      <p class="muted tiny">Saved on the robot. Night caps them; it doesn't change these.</p>
+      <label class="slider"><span>Lights</span><input type="range" min="0" max="100" id="setDimmer"><output id="outDimmer"></output></label>
+      <label class="slider"><span>Speaker</span><input type="range" min="0" max="100" id="setVolume"><output id="outVolume"></output></label>
+      <label class="slider"><span>Screen</span><input type="range" min="5" max="100" id="setBrightness"><output id="outBrightness"></output></label>
+      <div class="msg" id="robotMsg"></div>
+    </div>
+
+    <div class="card">
+      <h3>Night</h3>
+      <label class="row"><input type="checkbox" id="nightOn"> <span>Dim it at night</span></label>
+      <div class="row"><span class="lab">From</span><input type="time" id="nightStart"><span class="lab">to</span><input type="time" id="nightEnd"></div>
+      <label class="slider"><span>Lights at most</span><input type="range" min="0" max="100" id="nightDimmer"><output></output></label>
+      <label class="slider"><span>Speaker at most</span><input type="range" min="0" max="100" id="nightVolume"><output></output></label>
+      <label class="slider"><span>Screen at most</span><input type="range" min="0" max="100" id="nightBrightness"><output></output></label>
+      <p class="muted tiny">The voice server keeps this, so the bedroom stays dim with this page closed.</p>
+      <div class="msg" id="nightMsg"></div>
+    </div>
+
+    <div class="card">
+      <h3>Overwhelm</h3>
+      <div class="meter"><div class="fill" id="overFill"></div></div>
+      <p class="muted tiny" id="overText">Nothing running.</p>
+      <label class="row"><input type="checkbox" id="overOn"> <span>Unbroken scratching can tip the face over</span></label>
+      <label class="num"><span>After (s)</span><input type="number" min="3" max="120" id="overSeconds"></label>
+      <label class="num"><span>A pause this long starts over (s)</span><input type="number" min="1" max="30" id="overGap"></label>
+      <label class="num"><span>Then rests for (s)</span><input type="number" min="10" max="3600" id="overRest"></label>
+      <h4>Never during work hours</h4>
+      <div class="row days" id="workDays"></div>
+      <div class="row"><span class="lab">From</span><input type="number" min="0" max="24" id="workStart"><span class="lab">to</span><input type="number" min="0" max="24" id="workEnd"><span class="lab">o'clock</span></div>
+      <div class="msg" id="overMsg"></div>
+    </div>
+
+    <div class="card wide">
+      <h3>Touch</h3>
+      <p class="muted tiny">What a hand did, what it was read as, and what the face showed. Newest first; kept in memory, the voice server's log has the rest.</p>
+      <table class="feed"><thead><tr><th>When</th><th>Touch</th><th>How long</th><th>Showed</th></tr></thead><tbody id="feedRows"></tbody></table>
+    </div>
+  </div>
+</section>
+
+<section class="view" id="privacy">
+  <div class="card prose">
+    <h3>What this body senses, keeps, and sends</h3>
+    <p>So you, and whoever you hand it to, always know what's being managed.</p>
+    <table class="facts-table">
+      <thead><tr><th></th><th>When it's on</th><th>What's kept</th><th>Where it goes</th></tr></thead>
+      <tbody>
+        <tr><th>Microphone</th>
+          <td>Only after a tap on the screen, or when the mind calls. No wake word: nothing listens for one. A call the mind starts is deaf unless you were talking to it in the last three minutes. Any open channel hangs up after a quiet minute.</td>
+          <td>What you say, as sound clips and their transcripts, in the voice server's <code>state/heard/</code> and <code>heard.jsonl</code>. Clips with no words are deleted.</td>
+          <td>Transcribed by the speech service the voice server's Lodestar points at.</td></tr>
+        <tr><th>Camera</th>
+          <td>Only when asked for one picture. Nothing takes one on its own, and this page has no camera button.</td>
+          <td>Nothing on the robot.</td>
+          <td>Only to whoever asked.</td></tr>
+        <tr><th>Touch</th>
+          <td>Always: it's how the face reacts.</td>
+          <td>Each touch and what it showed, in the voice server's <code>touch.jsonl</code>.</td>
+          <td>Nowhere off the box.</td></tr>
+        <tr><th>Speaker</th>
+          <td>When the mind speaks.</td>
+          <td>Saved sound clips, if any.</td>
+          <td>Speech is rendered by the service the voice server's Lodestar points at.</td></tr>
+      </tbody>
+    </table>
+    <h4>The lights don't lie</h4>
+    <p>Green: the mic is open. Blue: it's speaking. Red: the camera sensor is on, lit before it starts and put out after it stops.
+      They're held above everything else on the rails, so no mood color, light show or call can cover them, and the dimmer and night caps can dim them but never put them out.</p>
+    <h4>Tokens</h4>
+    <p>This page holds only Psycheion's own token, in this browser. Psycheion holds the robot's and the voice server's itself, makes every call to them, and never hands them to the page.</p>
+  </div>
+</section>
+
+<section class="view" id="faces">
+  <div class="card prose">
+    <h3>Faces</h3>
+    <p>Face Studio is moving in here from SerenSoma. Until it does, run it from the SerenSoma checkout (<code>Face Studio.cmd</code>).</p>
+  </div>
+</section>

@@ -1,0 +1,31 @@
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap:var(--gap); }
+.card.wide { grid-column:1 / -1; }
+.card h3 { margin:0 0 8px; font-size:14px; letter-spacing:.04em; text-transform:uppercase; color:var(--text-dim); }
+.card h4 { margin:14px 0 6px; font-size:12px; color:var(--text-dim); }
+.tiny { font-size:12px; }
+.facts { display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:13px; margin-bottom:10px; }
+.facts b { color:var(--text); font-weight:500; }
+.rails { display:flex; flex-direction:column; gap:8px; margin:10px 0; }
+.rail { display:flex; gap:8px; }
+.led { width:22px; height:22px; border-radius:50%; border:1px solid var(--border); background:#000; }
+.led.truth { outline:1px dashed var(--faint); outline-offset:2px; }
+label.slider, label.num, .row { display:flex; align-items:center; gap:8px; margin:6px 0; }
+label.slider > span, label.num > span { min-width:120px; color:var(--text-dim); font-size:13px; }
+label.slider input[type=range] { flex:1; min-width:0; }
+label.slider output { width:36px; text-align:right; font-family:var(--mono); font-size:12px; }
+label.num input { width:72px; }
+.lab { color:var(--text-dim); font-size:13px; }
+.days { flex-wrap:wrap; gap:4px 10px; }
+.days label { display:flex; align-items:center; gap:3px; font-size:12px; }
+input[type=time], input[type=number] { background:var(--surface-2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:3px 6px; }
+.meter { height:10px; border-radius:5px; background:var(--surface-2); border:1px solid var(--border); overflow:hidden; }
+.meter .fill { height:100%; width:0; background:var(--accent); transition:width .4s; }
+.msg { font-size:12px; min-height:16px; margin-top:6px; }
+.msg.bad { color:var(--danger); } .msg.ok { color:var(--ok); }
+table.feed, table.facts-table { width:100%; border-collapse:collapse; font-size:13px; }
+table.feed th, table.feed td, table.facts-table th, table.facts-table td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
+table.feed th, table.facts-table thead th { color:var(--text-dim); font-weight:500; }
+table.feed td.n { font-family:var(--mono); }
+table.feed tr.over td { color:var(--accent); }
+.prose p { max-width:72ch; line-height:1.5; }
+@media (max-width: 560px) { label.slider > span, label.num > span { min-width:90px; } table.facts-table { font-size:12px; } }

@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+# setuptools-scm writes this at build time
+SerenPsycheion/seren_psycheion/_version.py
+# a local config can hold an inline token
+seren-psycheion.yaml

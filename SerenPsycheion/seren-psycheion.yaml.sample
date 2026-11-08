@@ -1,0 +1,22 @@
+# ════════════════════════════════════════════════════════════════════════
+#  seren-psycheion.yaml - copy to ~/seren-psycheion/seren-psycheion.yaml
+# ════════════════════════════════════════════════════════════════════════
+
+server:
+  host: 127.0.0.1          # loopback. Wider needs a token, or Psycheion refuses to start.
+  port: 7429
+  # bearer_token_env: SEREN_PSYCHEION_TOKEN
+
+# The body. Tokens are POINTERS: token_env (an env var's name), token_keyring
+# ("service/username" in the OS keychain) or token_file (a file holding only
+# the token). The browser never sees these; Psycheion makes the calls itself.
+soma:
+  robot:                   # the robot's control API (firmware)
+    url: http://192.168.0.201:8080
+    # token_file: ~/SerenCore/SerenSoma/seren-voice/state/control_token
+  voice:                   # the body's voice server
+    url: http://127.0.0.1:7480
+    # token_file: ~/SerenCore/SerenSoma/seren-voice/state/token
+
+updates:
+  enabled: true
