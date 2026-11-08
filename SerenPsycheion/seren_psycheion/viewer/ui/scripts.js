@@ -5,6 +5,10 @@
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const TRUTH = new Set([0, 1, 6, 7]);
 let FEED = [], FEED_LAST = 0, FILLED_ROBOT = false, FILLED_VOICE = false;
+// The feed keeps the last FEED_KEEP touches and shows FEED_SHOWN of them: a good scratch is dozens a minute,
+// and a page that grows a row for each one gets long fast. "Show more" shows FEED_PAGE more.
+const FEED_KEEP = 200, FEED_PAGE = 25;
+let FEED_SHOWN = FEED_PAGE;
 
 const $ = id => document.getElementById(id);
 function say(id, text, bad) { const m = $(id); m.textContent = text || ""; m.className = "msg" + (text ? (bad ? " bad" : " ok") : ""); }
@@ -121,151 +125,31 @@ function describe(e) {
   }
 }
 
+function paintFeed() {
+  const shown = FEED.slice(0, FEED_SHOWN);
+  $("feedRows").innerHTML = shown.map(e => `<tr class="${e.overwhelmed ? "over" : ""}">` +
+    `<td class="n">${new Date(e.t * 1000).toLocaleTimeString()}</td><td>${escapeHtml(describe(e))}</td>` +
+    `<td class="n">${e.ms ? e.ms + " ms" : ""}</td><td>${escapeHtml(e.overwhelmed ? "overwhelmed" : e.showed || "")}</td></tr>`).join("");
+  $("feedMore").hidden = FEED.length <= FEED_SHOWN;
+  $("feedCount").textContent = FEED.length ? `${shown.length} of the last ${FEED.length}` : "";
+}
+
 async function loadTouch() {
   let r;
   try { r = await api(`/api/soma/touch?after=${FEED_LAST}`); } catch (e) { return; }
-  if (r.last < FEED_LAST) { FEED = []; FEED_LAST = 0; return; }   // the voice server restarted: its count did too
+  if (r.last < FEED_LAST) { FEED = []; FEED_LAST = 0; FEED_SHOWN = FEED_PAGE; paintFeed(); return; }   // the voice server restarted: its count did too
   FEED_LAST = r.last;
   if (r.events.length) {
-    FEED = r.events.slice().reverse().concat(FEED).slice(0, 100);
-    $("feedRows").innerHTML = FEED.map(e => `<tr class="${e.overwhelmed ? "over" : ""}">` +
-      `<td class="n">${new Date(e.t * 1000).toLocaleTimeString()}</td><td>${escapeHtml(describe(e))}</td>` +
-      `<td class="n">${e.ms ? e.ms + " ms" : ""}</td><td>${escapeHtml(e.overwhelmed ? "overwhelmed" : e.showed || "")}</td></tr>`).join("");
+    FEED = r.events.slice().reverse().concat(FEED).slice(0, FEED_KEEP);
+    paintFeed();
   }
   const o = r.overwhelm || {};
   $("overFill").style.width = `${Math.round((o.progress || 0) * 100)}%`;
   $("overText").textContent = o.running ? `Scratching: ${Math.round(o.progress * 100)}% of the way.` : "Nothing running.";
 }
 
-// ── Set up ──────────────────────────────────────────────────────────
-// Its own fetch: api() keeps only the status, and here the reason is the useful part
-// ("this robot's firmware has no /api/config yet: ...").
-function setupKeys() {
-  const v = id => $(id).value.trim(), keys = {};
-  if (v("suSsid")) keys.wifi = { ssid: v("suSsid"), password: $("suPass").value };
-  keys.voice = v("suVoice") || "auto";
-  if (v("suTsKey") || v("suTsName")) {
-    keys.tailnet = {};
-    if (v("suTsKey")) keys.tailnet.key = v("suTsKey");
-    if (v("suTsName")) keys.tailnet.name = v("suTsName");
-  }
-  return keys;
-}
-
-async function setupCall(path, body) {
-  const headers = { "Content-Type": "application/json" }, tok = getToken();
-  if (tok) headers.Authorization = "Bearer " + tok;
-  const r = await fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
-  if (!r.ok) {
-    let why = `${r.status} ${r.statusText}`;
-    try { const j = await r.json(); why = j.detail || why; } catch (_) { /* not JSON */ }
-    throw new Error(r.status === 401 ? "Psycheion wants its token (🔑 Token, top right)." : why);
-  }
-  return r;
-}
-
-function forgetSecrets() { $("suPass").value = ""; $("suTsKey").value = ""; }
-
-async function setupSend() {
-  const keys = setupKeys(), rotate = $("suRotate").checked;
-  const what = [keys.wifi && `Wi-Fi to ${keys.wifi.ssid}`, `voice server ${keys.voice}`,
-                keys.tailnet && "the tailnet", rotate && "a new token"].filter(Boolean).join(", ");
-  if (!confirm(`Send ${what} to the robot? It saves them and reboots.` +
-               (keys.wifi ? "\n\nA wrong Wi-Fi password takes it off the network until it gets a soma.yaml card." : ""))) return;
-  say("suMsg", "Sending...");
-  try {
-    const r = await (await setupCall("/api/soma/setup", { ...keys, rotate_token: rotate })).json();
-    forgetSecrets(); $("suRotate").checked = false;
-    say("suMsg", `The robot saved: ${r.changed.join(", ") || "nothing new"}.` +
-        (r.rebooting ? " It's rebooting; give it half a minute." : "") +
-        (r.token_rotated ? " New token written down by the voice server." : ""));
-  } catch (e) { say("suMsg", e.message, true); }
-}
-
-async function setupCard() {
-  say("suMsg", "Making it...");
-  try {
-    const text = await (await setupCall("/api/soma/card", setupKeys())).text();
-    const a = Object.assign(document.createElement("a"),
-                            { href: URL.createObjectURL(new Blob([text], { type: "text/yaml" })), download: "soma.yaml" });
-    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    forgetSecrets();
-    say("suMsg", "Downloaded. Copy it to the root of the robot's microSD card and boot it; it reads it and deletes it. " +
-                 "It holds the robot's token, so don't leave it lying around.");
-  } catch (e) { say("suMsg", e.message, true); }
-}
-
-// ── Firmware ────────────────────────────────────────────────────────
-async function loadFirmware() {
-  let f;
-  try { f = await (await fetch("/api/soma/firmware", { headers: authHeaders() })).json(); }
-  catch (e) { return; }
-  if (f.detail) { say("fwMsg", f.detail, true); return; }
-  $("fwFacts").innerHTML = [["The robot runs", f.robot || "?"], ["Armed", f.armed ? f.armed.version : "nothing"],
-                            ["Releases from", f.repo || "?"]]
-    .map(([k, v]) => `<span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b>`).join("");
-  $("fwRows").innerHTML = (f.staged || []).map(s =>
-    `<tr><td class="n">${escapeHtml(s.version)}</td><td>${escapeHtml(s.source)}</td>` +
-    `<td class="n">${Math.round(s.size / 1024)} KB</td>` +
-    `<td><button data-fw="${escapeHtml(s.version)}">Install</button></td></tr>`).join("") ||
-    `<tr><td colspan="4" class="tiny">Nothing staged yet.</td></tr>`;
-  $("fwRows").querySelectorAll("button[data-fw]").forEach(b => b.onclick = () => installFirmware(b.dataset.fw));
-}
-
-function authHeaders(extra) {
-  const h = Object.assign({}, extra || {}), tok = getToken();
-  if (tok) h.Authorization = "Bearer " + tok;
-  return h;
-}
-
-async function fwCall(path, opts) {
-  const r = await fetch(path, Object.assign({}, opts, { headers: authHeaders(opts.headers) }));
-  if (!r.ok) {
-    let why = `${r.status} ${r.statusText}`;
-    try { const j = await r.json(); why = j.detail || why; } catch (_) { /* not JSON */ }
-    throw new Error(r.status === 401 ? "Psycheion wants its token (🔑 Token, top right)." : why);
-  }
-  return r.json();
-}
-
-async function fetchFirmware() {
-  say("fwMsg", "Fetching the latest release and checking it...");
-  try {
-    const s = await fwCall("/api/soma/firmware/fetch", { method: "POST", headers: { "Content-Type": "application/json" },
-                                                         body: JSON.stringify({ version: "latest" }) });
-    say("fwMsg", `Staged ${s.version} (${s.source}), checked.`); loadFirmware();
-  } catch (e) { say("fwMsg", e.message, true); }
-}
-
-async function uploadFirmware() {
-  const file = $("fwFile").files[0], version = $("fwVersion").value.trim();
-  if (!file || !version) { say("fwMsg", "Pick the .bin and say its version.", true); return; }
-  say("fwMsg", "Sending it to the voice server...");
-  try {
-    const s = await fwCall(`/api/soma/firmware/upload?version=${encodeURIComponent(version)}`,
-                           { method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: file });
-    say("fwMsg", `Staged ${s.version}.`); $("fwFile").value = ""; loadFirmware();
-  } catch (e) { say("fwMsg", e.message, true); }
-}
-
-async function installFirmware(version) {
-  if (!confirm(`Install firmware ${version}? The robot reboots, downloads it, and reboots again into it. ` +
-               "Leave it plugged in until its face is back.")) return;
-  try {
-    const r = await fwCall("/api/soma/firmware/install", { method: "POST", headers: { "Content-Type": "application/json" },
-                                                           body: JSON.stringify({ version }) });
-    say("fwMsg", r.rebooting ? `${version} armed, and the robot is rebooting to take it. Give it a couple of minutes.`
-                             : `${version} armed for the robot's next check-in (it didn't take the reboot: restart it by hand).`);
-    loadFirmware();
-  } catch (e) { say("fwMsg", e.message, true); }
-}
-
 document.addEventListener("DOMContentLoaded", () => {
-  $("fwFetch").onclick = fetchFirmware;
-  $("fwUpload").onclick = uploadFirmware;
-  loadFirmware(); setInterval(loadFirmware, 15000);
-  $("suSend").onclick = setupSend;
-  $("suCard").onclick = setupCard;
+  $("feedMore").onclick = () => { FEED_SHOWN += FEED_PAGE; paintFeed(); };
   loadSoma(); loadTouch();
   setInterval(loadSoma, 5000);
   setInterval(loadTouch, 1000);
