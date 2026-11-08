@@ -67,13 +67,13 @@ class Endpoint:
 @dataclass
 class SomaConfig:
     """The body: the robot's control API and its voice server."""
-    robot: Endpoint = field(default_factory=lambda: Endpoint(url="http://192.168.0.201:8080"))
+    robot: Endpoint = field(default_factory=lambda: Endpoint(url=""))   # no robot until one's given
     voice: Endpoint = field(default_factory=lambda: Endpoint(url="http://127.0.0.1:7480"))
 
     @classmethod
     def from_dict(cls, d: Any) -> "SomaConfig":
         d = d if isinstance(d, dict) else {}
-        return cls(robot=Endpoint.from_dict(d.get("robot"), "http://192.168.0.201:8080"),
+        return cls(robot=Endpoint.from_dict(d.get("robot"), ""),
                    voice=Endpoint.from_dict(d.get("voice"), "http://127.0.0.1:7480"))
 
 

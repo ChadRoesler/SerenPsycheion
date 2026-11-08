@@ -12,7 +12,7 @@ server:
 # the token). The browser never sees these; Psycheion makes the calls itself.
 soma:
   robot:                   # the robot's control API (firmware)
-    url: http://192.168.0.201:8080
+    url: http://192.0.2.21:8080
     # token_file: ~/seren-soma/state/control_token
   voice:                   # the body's voice server
     url: http://127.0.0.1:7480

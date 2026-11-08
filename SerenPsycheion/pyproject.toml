@@ -19,7 +19,7 @@ dependencies = [
     # the shell, auth, config, update checking
     "seren-meninges>=6.0.0,<7",
     # the request log, and seren_sinew.soma: the wire to the body, spelled once
-    "seren-sinew>=5.5.1,<6",
+    "seren-sinew>=5.7.0,<6",  # 5.7.0: rotated tokens re-read, setup_robot / robot_card
 ]
 
 [project.optional-dependencies]

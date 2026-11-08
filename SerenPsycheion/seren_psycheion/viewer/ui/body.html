@@ -92,3 +92,57 @@
     <p>Face Studio is moving in here from SerenSoma. Until it does, run it from the SerenSoma checkout (<code>Face Studio.cmd</code>).</p>
   </div>
 </section>
+
+<section class="view" id="setup">
+  <div class="grid">
+    <div class="card wide prose">
+      <h3>Set up the robot</h3>
+      <p>Everything that makes this robot <em>yours</em>: its Wi-Fi, the voice server it checks in with, the token
+      its control API asks for, and a tailnet if you use one. Leave a box empty to leave that alone. The voice server
+      fills in the blanks it knows: itself as the voice server, and the token it already holds.</p>
+      <p class="tiny">A robot that's on the network takes these straight away and reboots. One that isn't yet (a new
+      one, or one whose Wi-Fi changed) gets them from a <code>soma.yaml</code> on its microSD card, which it reads
+      once at boot and deletes. Neither way is a password kept here or by the voice server.</p>
+    </div>
+    <div class="card">
+      <h3>Wi-Fi</h3>
+      <label class="num"><span>Network</span><input id="suSsid" maxlength="32" autocomplete="off" placeholder="leave as it is"></label>
+      <label class="num"><span>Password</span><input id="suPass" type="password" maxlength="64" autocomplete="new-password"></label>
+      <h4>Voice server</h4>
+      <label class="num"><span>Address</span><input id="suVoice" maxlength="128" placeholder="auto: the voice server"></label>
+    </div>
+    <div class="card">
+      <h3>Token and tailnet</h3>
+      <label class="row"><input type="checkbox" id="suRotate"> <span class="lab">Give the robot a new token</span></label>
+      <p class="tiny">The robot takes it first, then the voice server writes it down, then the robot reboots onto it.
+      If the robot says no, nothing changes. A Workbench or Psycheion pointed at the same token file picks it up.</p>
+      <h4>Tailnet (only on a build that has one)</h4>
+      <label class="num"><span>Auth key</span><input id="suTsKey" type="password" maxlength="128" autocomplete="off"></label>
+      <label class="num"><span>Device name</span><input id="suTsName" maxlength="63" placeholder="soma"></label>
+    </div>
+    <div class="card wide">
+      <div class="row">
+        <button class="primary" id="suSend">Send to the robot (it reboots)</button>
+        <button id="suCard">Download soma.yaml for the card</button>
+      </div>
+      <div class="msg" id="suMsg"></div>
+    </div>
+    <div class="card wide">
+      <h3>Firmware</h3>
+      <div class="facts" id="fwFacts"></div>
+      <p class="tiny">The voice server fetches a release (checked against its SHA256SUMS) or takes a build of your own
+      (<code>stack-chan.bin</code>), and offers it to the robot once, on its next check-in. The robot shows its progress
+      and reboots into it; if the new one can't check in, it goes back to the old one on the next reboot.</p>
+      <div class="row">
+        <button id="fwFetch">Fetch the latest release</button>
+        <label class="row"><span class="lab">or a build of your own</span>
+          <input type="file" id="fwFile" accept=".bin"></label>
+        <input id="fwVersion" maxlength="32" placeholder="its version, e.g. 0.2.0-mine" style="width:16em">
+        <button id="fwUpload">Stage it</button>
+      </div>
+      <table class="facts-table"><thead><tr><th>Staged</th><th>From</th><th>Size</th><th></th></tr></thead>
+        <tbody id="fwRows"></tbody></table>
+      <div class="msg" id="fwMsg"></div>
+    </div>
+  </div>
+</section>

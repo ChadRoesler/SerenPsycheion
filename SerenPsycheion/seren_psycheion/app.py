@@ -17,7 +17,7 @@ from typing import Any, Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from seren_meninges.auth import bearer_auth_middleware
 from seren_sinew.cluster.dtos import to_dict
 from seren_sinew.request_log import RequestLoggingMiddleware
@@ -38,6 +38,8 @@ _VIEWER_DIR = Path(__file__).parent / "viewer" / "ui"
 
 def _unreachable(what: str, url: str, exc: Exception) -> HTTPException:
     """502, saying where and roughly why, never what the body said in full (it can echo headers)."""
+    if not url:
+        return HTTPException(502, f"no {what} set up yet (its url in Psycheion's config is blank)")
     if isinstance(exc, httpx.HTTPStatusError):
         code = exc.response.status_code
         why = "refused the token" if code == 401 else f"answered {code}"
@@ -53,8 +55,10 @@ def create_app(config: Optional[PsycheionConfig] = None, *,
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        app.state.robot = SomaRobot(soma.robot.url, soma.robot.resolve(), transport=robot_transport)
-        app.state.voice = SomaVoice(soma.voice.url, soma.voice.resolve(), transport=voice_transport)
+        # Sources, not strings: asked again on a 401, so setting the robot up with a new token
+        # (below) doesn't leave this Psycheion holding the old one.
+        app.state.robot = SomaRobot(soma.robot.url, soma.robot.resolve, transport=robot_transport)
+        app.state.voice = SomaVoice(soma.voice.url, soma.voice.resolve, transport=voice_transport)
         try:
             yield
         finally:
@@ -143,6 +147,85 @@ def create_app(config: Optional[PsycheionConfig] = None, *,
             raise _unreachable("voice server", soma.voice.url, exc)
         except (httpx.HTTPError, ValueError) as exc:
             raise _unreachable("voice server", soma.voice.url, exc)
+
+    def _setup_keys(body: Any) -> dict[str, Any]:
+        if not isinstance(body, dict):
+            raise HTTPException(400, "expected an object: wifi, voice, tailnet")
+        return {k: body[k] for k in ("wifi", "voice", "tailnet") if k in body}
+
+    def _setup_failed(exc: Exception) -> HTTPException:
+        """The voice server's own reason when it gave one (it never echoes a secret back);
+        otherwise where it couldn't be reached."""
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (400, 409, 502):
+            return HTTPException(exc.response.status_code, exc.response.text[:300])
+        return _unreachable("voice server", soma.voice.url, exc)
+
+    @app.post("/api/soma/setup")
+    async def setup_robot(request: Request):
+        """Set the robot up through the voice server: Wi-Fi, voice server (auto: the voice server
+        itself), tailnet, and rotate_token for a new token. The robot saves them and reboots.
+        A Wi-Fi password passes through here and isn't kept or logged."""
+        body = await request.json()
+        keys = _setup_keys(body)
+        try:
+            return await request.app.state.voice.setup_robot(
+                keys, rotate_token=bool(body.get("rotate_token")), reboot=bool(body.get("reboot", True)))
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _setup_failed(exc)
+
+    @app.post("/api/soma/card")
+    async def robot_card(request: Request):
+        """soma.yaml for the robot's SD card, blanks filled by the voice server. Holds a token:
+        handed straight to the browser as a download and never cached."""
+        keys = _setup_keys(await request.json())
+        try:
+            text = await request.app.state.voice.robot_card(keys)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _setup_failed(exc)
+        return Response(text, media_type="text/yaml",
+                        headers={"Content-Disposition": 'attachment; filename="soma.yaml"', "Cache-Control": "no-store"})
+
+    @app.get("/api/soma/firmware")
+    async def firmware(request: Request):
+        """What the robot runs, what the voice server has staged for it, and what's armed."""
+        try:
+            return await request.app.state.voice.firmware()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _setup_failed(exc)
+
+    @app.post("/api/soma/firmware/fetch")
+    async def firmware_fetch(request: Request):
+        """{"version": "latest" | "0.1.1"}: the voice server fetches that release, checked against its sums."""
+        body = await request.json()
+        version = str((body or {}).get("version") or "latest") if isinstance(body, dict) else "latest"
+        try:
+            return await request.app.state.voice.fetch_firmware(version)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _setup_failed(exc)
+
+    @app.put("/api/soma/firmware/upload")
+    async def firmware_upload(request: Request, version: str):
+        """An app image of your own (stack-chan.bin from a build), passed to the voice server to stage."""
+        data = await request.body()
+        try:
+            return await request.app.state.voice.upload_firmware(version, data)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _setup_failed(exc)
+
+    @app.post("/api/soma/firmware/install")
+    async def firmware_install(request: Request):
+        """{"version"}: arm it for the robot's next check-in and reboot the robot to take it."""
+        body = await request.json()
+        if not isinstance(body, dict) or not body.get("version"):
+            raise HTTPException(400, "expected {\"version\": ...}")
+        try:
+            return await request.app.state.voice.install_firmware(str(body["version"]))
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise HTTPException(404, exc.response.text[:300])
+            raise _setup_failed(exc)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _setup_failed(exc)
 
     @app.get("/api/soma/touch")
     async def touch(request: Request, after: int = 0):

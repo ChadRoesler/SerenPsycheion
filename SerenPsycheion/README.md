@@ -17,7 +17,7 @@ Copy [`seren-psycheion.yaml.sample`](seren-psycheion.yaml.sample) to
 ```yaml
 soma:
   robot:
-    url: http://192.168.0.201:8080
+    url: http://192.0.2.21:8080
     token_file: ~/seren-soma/state/control_token
   voice:
     url: http://127.0.0.1:7480
