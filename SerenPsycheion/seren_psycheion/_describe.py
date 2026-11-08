@@ -18,7 +18,7 @@ PORT = 7429
 
 GROUP = "auxiliary"
 
-# Orchid: psyche is the butterfly.
+# Brain colored.
 ACCENT = "#f2aeb1"
 
 # Nothing to install first. A body is reached over its own HTTP APIs, so a
