@@ -7,7 +7,7 @@ Where it's read from, first found wins:
 THE BODY'S TOKENS ARE POINTERS, never secrets in this file unless you choose the
 escape hatch: `token_env` (an environment variable's name), `token_keyring`
 ("service/username" in the OS keychain), or `token_file` (a file holding only the
-token - SerenSoma keeps its own under seren-voice/state/, and pointing at those
+token - SerenSoma keeps its own in its state folder, ~/seren-soma/state/, and pointing at those
 is the simplest setup on the box the body's voice server runs on). The browser
 never sees them: Psycheion makes the calls itself.
 """

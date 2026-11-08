@@ -18,10 +18,10 @@ Copy [`seren-psycheion.yaml.sample`](seren-psycheion.yaml.sample) to
 soma:
   robot:
     url: http://192.168.0.201:8080
-    token_file: ~/SerenCore/SerenSoma/seren-voice/state/control_token
+    token_file: ~/seren-soma/state/control_token
   voice:
     url: http://127.0.0.1:7480
-    token_file: ~/SerenCore/SerenSoma/seren-voice/state/token
+    token_file: ~/seren-soma/state/token
 ```
 
 The body's tokens are pointers: `token_file`, `token_env` (an environment
