@@ -19,7 +19,20 @@ STATUS = {"ok": True, "firmware": "1.6.2", "uptimeMs": 60000, "resetReason": "so
           "batteryLevel": 90, "charging": False, "freeInternalHeap": 44000, "freePsram": 6000000, "face": "studio"}
 VOICE_SETTINGS = {"night": {"enabled": False, "start": "22:30", "end": "07:00", "dimmer": 15, "volume": 30, "brightness": 20},
                   "work_hours": {"days": [0, 1, 2, 3, 4], "start": 8, "end": 17},
-                  "overwhelm": {"enabled": True, "seconds": 15, "gap_seconds": 3, "rest_seconds": 120}, "night_now": False}
+                  "channel": {"dead_air_seconds": 60}, "night_now": False}
+
+
+def all_paths(app) -> set:
+    """Every route's path, into included routers too (FastAPI wraps those without a .path)."""
+    out, stack = set(), list(app.routes)
+    while stack:
+        r = stack.pop()
+        if getattr(r, "path", None):
+            out.add(r.path)
+        # an included router: older FastAPI flattens it, 0.16x keeps it whole as .original_router
+        inner = getattr(r, "original_router", None) or getattr(r, "router", None) or r
+        stack.extend(getattr(inner, "routes", None) or [] if inner is not r else getattr(r, "routes", None) or [])
+    return out
 
 
 class Body:
@@ -58,8 +71,8 @@ class Body:
             return httpx.Response(200, json=VOICE_SETTINGS)
         if request.url.path == "/touch":
             return httpx.Response(200, json={"events": [{"seq": 1, "t": 1.0, "kind": "scritch", "t_ms": 5, "ms": 100,
-                                                         "showed": "melty", "overwhelmed": False}],
-                                             "last": 1, "overwhelm": {"running": True, "progress": 0.5}})
+                                                         "showed": "relaxed", "scratching": True}],
+                                             "last": 1, "hand": {"down": True, "from_ms": 5, "to_ms": 3000}})
         return httpx.Response(404)
 
 
@@ -67,7 +80,8 @@ def client(body: Body, bearer: str = "") -> TestClient:
     cfg = PsycheionConfig(server=ServerConfig(host="127.0.0.1", port=7429, bearer_token=bearer),
                           soma=SomaConfig(robot=Endpoint(url="http://bot:8080", token=ROBOT_TOKEN),
                                           voice=Endpoint(url="http://voice:7480", token=VOICE_TOKEN)))
-    app = create_app(cfg, robot_transport=httpx.MockTransport(body.robot), voice_transport=httpx.MockTransport(body.voice))
+    app = create_app(cfg, robot_transport=httpx.MockTransport(body.robot), voice_transport=httpx.MockTransport(body.voice),
+                     run_buildups=False)
     return TestClient(app)
 
 
@@ -121,14 +135,14 @@ def test_voice_settings_pass_through_and_its_no_is_ours():
     with client(Body()) as c:
         ok = c.post("/api/soma/voice/settings", json={"night": {"enabled": True}})
         no = c.post("/api/soma/voice/settings", json={"night": {"start": "99:00"}})
-    assert ok.status_code == 200 and ok.json()["overwhelm"]["seconds"] == 15
+    assert ok.status_code == 200 and ok.json()["channel"]["dead_air_seconds"] == 60
     assert no.status_code == 400 and "time like 22:30" in no.json()["detail"]
 
 
 def test_touch_feed():
     with client(Body()) as c:
         r = c.get("/api/soma/touch", params={"after": 0}).json()
-    assert r["events"][0]["showed"] == "melty" and r["overwhelm"]["progress"] == 0.5
+    assert r["events"][0]["showed"] == "relaxed" and r["events"][0]["scratching"] and r["hand"]["down"]
 
 
 def test_bearer_guards_the_api_but_not_the_page():
@@ -162,7 +176,7 @@ def test_root_is_the_family_info_route():
 
 def test_no_route_takes_a_photo():
     with client(Body()) as c:
-        paths = {route.path for route in c.app.routes}
+        paths = all_paths(c.app)
     assert not any("photo" in p or "camera" in p for p in paths), paths
 
 
@@ -194,7 +208,8 @@ def test_a_rotated_token_is_picked_up_from_its_file_without_a_restart(tmp_path):
     cfg = PsycheionConfig(server=ServerConfig(host="127.0.0.1", port=7429),
                           soma=SomaConfig(robot=Endpoint(url="http://bot:8080", token_file=str(f)),
                                           voice=Endpoint(url="http://voice:7480", token=VOICE_TOKEN)))
-    app = create_app(cfg, robot_transport=httpx.MockTransport(robot), voice_transport=httpx.MockTransport(Body().voice))
+    app = create_app(cfg, robot_transport=httpx.MockTransport(robot), voice_transport=httpx.MockTransport(Body().voice),
+                     run_buildups=False)
     with TestClient(app) as c:
         f.write_text("new")                  # the voice server rotated it
         r = c.get("/api/soma").json()
@@ -214,5 +229,5 @@ def test_building_the_body_is_somas_not_ours():
     # Setting the robot up and its firmware live in SerenSoma's own page (8 Nov 2026):
     # Soma builds the body, Psycheion is its faces and its touch.
     with client(Body()) as c:
-        paths = {route.path for route in c.app.routes}
+        paths = all_paths(c.app)
     assert not any(p.startswith(("/api/soma/setup", "/api/soma/card", "/api/soma/firmware")) for p in paths), paths

@@ -63,7 +63,7 @@ function fillRobot(s) {
 }
 
 function fillVoice(v) {
-  const n = v.night, o = v.overwhelm, w = v.work_hours;
+  const n = v.night, w = v.work_hours;
   const night = change => saveVoice({ night: change }, "nightMsg");
   $("nightOn").checked = n.enabled; $("nightOn").onchange = e => night({ enabled: e.target.checked });
   $("nightStart").value = n.start; $("nightStart").onchange = e => night({ start: e.target.value });
@@ -72,12 +72,7 @@ function fillVoice(v) {
   slider("nightVolume", n.volume, x => night({ volume: x }));
   slider("nightBrightness", n.brightness, x => night({ brightness: x }));
 
-  const over = change => saveVoice({ overwhelm: change }, "overMsg");
-  $("overOn").checked = o.enabled; $("overOn").onchange = e => over({ enabled: e.target.checked });
-  for (const [id, key] of [["overSeconds", "seconds"], ["overGap", "gap_seconds"], ["overRest", "rest_seconds"]]) {
-    $(id).value = o[key]; $(id).onchange = e => over({ [key]: Math.round(Number(e.target.value)) });
-  }
-  const work = change => saveVoice({ work_hours: change }, "overMsg");
+  const work = change => saveVoice({ work_hours: change }, "workMsg");
   const days = $("workDays"); days.innerHTML = "";
   DAYS.forEach((name, i) => {
     const box = Object.assign(document.createElement("input"), { type: "checkbox", checked: w.days.includes(i) });
@@ -127,9 +122,9 @@ function describe(e) {
 
 function paintFeed() {
   const shown = FEED.slice(0, FEED_SHOWN);
-  $("feedRows").innerHTML = shown.map(e => `<tr class="${e.overwhelmed ? "over" : ""}">` +
+  $("feedRows").innerHTML = shown.map(e => `<tr class="${e.scratching ? "scratching" : ""}">` +
     `<td class="n">${new Date(e.t * 1000).toLocaleTimeString()}</td><td>${escapeHtml(describe(e))}</td>` +
-    `<td class="n">${e.ms ? e.ms + " ms" : ""}</td><td>${escapeHtml(e.overwhelmed ? "overwhelmed" : e.showed || "")}</td></tr>`).join("");
+    `<td class="n">${e.ms ? e.ms + " ms" : ""}</td><td>${escapeHtml(e.showed || "")}</td></tr>`).join("");
   $("feedMore").hidden = FEED.length <= FEED_SHOWN;
   $("feedCount").textContent = FEED.length ? `${shown.length} of the last ${FEED.length}` : "";
 }
@@ -143,12 +138,46 @@ async function loadTouch() {
     FEED = r.events.slice().reverse().concat(FEED).slice(0, FEED_KEEP);
     paintFeed();
   }
-  const o = r.overwhelm || {};
-  $("overFill").style.width = `${Math.round((o.progress || 0) * 100)}%`;
-  $("overText").textContent = o.running ? `Scratching: ${Math.round(o.progress * 100)}% of the way.` : "Nothing running.";
+}
+
+// ── Build-ups: the face's, counted and fired here ───────────────────
+async function loadBuildups() {
+  let r;
+  try { r = await api("/api/buildups"); } catch (e) { return; }
+  $("buOn").checked = r.enabled;
+  $("buFiring").textContent = r.firing ? `${r.firing} is going now` : "";
+  if (!r.buildups.length) { $("buList").innerHTML = `<p class="muted tiny">This face declares none.</p>`; return; }
+  $("buList").innerHTML = r.buildups.map(b => {
+    const what = b.touch === "scratching" ? "scratching" : b.touch.replace("_", " ");
+    const flow = [b.pose, b.after].filter(Boolean).join(" then ") + (b.sound ? `, with ${b.sound}` : "");
+    const state = b.running ? `${Math.round(b.progress * 100)}% of the way`
+      : b.resting_s ? `resting, ${b.resting_s}s` : b.last_skipped ? `last one didn't fire: ${b.last_skipped}` : "waiting";
+    return `<div class="bu"><div class="row"><b>${escapeHtml(b.name)}</b>` +
+      `<span class="lab tiny">${escapeHtml(b.seconds)}s of ${escapeHtml(what)} &rarr; ${escapeHtml(flow)}</span>` +
+      `<button data-bu="${escapeHtml(b.name)}">Test</button></div>` +
+      `<div class="meter"><div class="fill" style="width:${Math.round(b.progress * 100)}%"></div></div>` +
+      `<p class="muted tiny">${escapeHtml(state)}</p></div>`;
+  }).join("");
+  $("buList").querySelectorAll("button[data-bu]").forEach(btn => btn.onclick = () => testBuildup(btn.dataset.bu));
+}
+
+async function testBuildup(name) {
+  const headers = { "Content-Type": "application/json" }, tok = getToken();
+  if (tok) headers.Authorization = "Bearer " + tok;
+  const r = await fetch(`/api/buildups/${encodeURIComponent(name)}/test`, { method: "POST", headers });
+  if (r.ok) { say("buMsg", `${name}: on its way.`); return; }
+  let why = `${r.status}`;
+  try { why = (await r.json()).detail || why; } catch (_) { /* not JSON */ }
+  say("buMsg", `${name}: ${why}`, true);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  $("buOn").onchange = async e => {
+    try { await api("/api/buildups", { method: "POST", body: JSON.stringify({ enabled: e.target.checked }) });
+          say("buMsg", e.target.checked ? "On." : "Off until you switch them back (or Psycheion restarts)."); }
+    catch (err) { say("buMsg", why(err), true); }
+  };
+  loadBuildups(); setInterval(loadBuildups, 1000);
   $("feedMore").onclick = () => { FEED_SHOWN += FEED_PAGE; paintFeed(); };
   loadSoma(); loadTouch();
   setInterval(loadSoma, 5000);

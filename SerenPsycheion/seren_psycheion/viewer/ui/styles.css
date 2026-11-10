@@ -26,8 +26,9 @@ table.feed, table.facts-table { width:100%; border-collapse:collapse; font-size:
 table.feed th, table.feed td, table.facts-table th, table.facts-table td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
 table.feed th, table.facts-table thead th { color:var(--text-dim); font-weight:500; }
 table.feed td.n { font-family:var(--mono); }
-table.feed tr.over td { color:var(--accent); }
+table.feed tr.scratching td:nth-child(2) { color:var(--accent); }
 .prose p { max-width:72ch; line-height:1.5; }
 @media (max-width: 560px) { label.slider > span, label.num > span { min-width:90px; } table.facts-table { font-size:12px; } }
 .feedbox { max-height:22rem; overflow-y:auto; border:1px solid var(--border); border-radius:8px; }
 .feedbox table.feed thead th { position:sticky; top:0; background:var(--surface); }
+.bu { margin:8px 0 10px; } .bu .row { justify-content:space-between; } .bu .row .lab { flex:1; }

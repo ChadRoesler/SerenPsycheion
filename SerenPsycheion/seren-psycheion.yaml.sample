@@ -18,5 +18,12 @@ soma:
     url: http://127.0.0.1:7480
     # token_file: ~/seren-soma/state/token
 
+# Face Studio's faces: one folder per face, its art and sounds beside its face.yaml
+# faces_dir: ~/seren-psycheion/faces
+
+# The face's build-ups (a touch kept up tips it over): on when Psycheion starts. The console switches them.
+# buildups:
+#   enabled: true
+
 updates:
   enabled: true

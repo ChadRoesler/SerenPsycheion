@@ -100,10 +100,25 @@ class UpdatesConfig:
 
 
 @dataclass
+class BuildupsConfig:
+    """The face's build-ups (buildups.py): on when Psycheion starts, unless this says otherwise.
+    The console's switch changes it until the next restart."""
+    enabled: bool = True
+
+    @classmethod
+    def from_dict(cls, d: Any) -> "BuildupsConfig":
+        d = d if isinstance(d, dict) else {}
+        return cls(enabled=bool(d.get("enabled", True)))
+
+
+@dataclass
 class PsycheionConfig:
     server: ServerConfig = field(default_factory=lambda: ServerConfig(host=DEFAULT_HOST, port=DEFAULT_PORT))
     soma: SomaConfig = field(default_factory=SomaConfig)
     updates: UpdatesConfig = field(default_factory=UpdatesConfig)
+    buildups: BuildupsConfig = field(default_factory=BuildupsConfig)
+    # Face Studio's faces (studio.py): one folder per face, art and sounds beside its face.yaml
+    faces_dir: str = "~/seren-psycheion/faces"
 
     @property
     def host(self) -> str:
@@ -154,4 +169,6 @@ def load_config(path: Optional[str] = None) -> PsycheionConfig:
                                       default_host=DEFAULT_HOST),
         soma=SomaConfig.from_dict(data.get("soma")),
         updates=UpdatesConfig.from_dict(data.get("updates")),
+        buildups=BuildupsConfig.from_dict(data.get("buildups")),
+        faces_dir=str(data.get("faces_dir") or "~/seren-psycheion/faces"),
     )

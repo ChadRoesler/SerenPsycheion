@@ -20,6 +20,11 @@ def _force_utf8_stdio() -> None:
 
 def main() -> None:
     _force_utf8_stdio()
+    if sys.argv[1:2] == ["face"]:
+        # seren-psycheion face init|preview|build ...: the face builder, no server
+        from .faces.face import main as face_main
+        face_main(sys.argv[2:])
+        return
     if "--describe" in sys.argv[1:]:
         from ._describe import DESCRIBE
         print(json.dumps(DESCRIBE))

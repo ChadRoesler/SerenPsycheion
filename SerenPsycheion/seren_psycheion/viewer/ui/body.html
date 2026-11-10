@@ -32,17 +32,16 @@
     </div>
 
     <div class="card">
-      <h3>Overwhelm</h3>
-      <div class="meter"><div class="fill" id="overFill"></div></div>
-      <p class="muted tiny" id="overText">Nothing running.</p>
-      <label class="row"><input type="checkbox" id="overOn"> <span>Unbroken scratching can tip the face over</span></label>
-      <label class="num"><span>After (s)</span><input type="number" min="3" max="120" id="overSeconds"></label>
-      <label class="num"><span>A pause this long starts over (s)</span><input type="number" min="1" max="30" id="overGap"></label>
-      <label class="num"><span>Then rests for (s)</span><input type="number" min="10" max="3600" id="overRest"></label>
-      <h4>Never during work hours</h4>
+      <h3>Build-ups</h3>
+      <p class="muted tiny">What this face does when a touch is kept up: it says so in its <code>face.yaml</code>
+        (<code>buildups:</code>), and Psycheion counts and fires them. Never in work hours, never with a call open.</p>
+      <label class="row"><input type="checkbox" id="buOn"> <span>On</span><span class="lab tiny" id="buFiring"></span></label>
+      <div id="buList"><p class="muted tiny">This face declares none.</p></div>
+      <div class="msg" id="buMsg"></div>
+      <h4>Work hours (build-ups wait them out)</h4>
       <div class="row days" id="workDays"></div>
       <div class="row"><span class="lab">From</span><input type="number" min="0" max="24" id="workStart"><span class="lab">to</span><input type="number" min="0" max="24" id="workEnd"><span class="lab">o'clock</span></div>
-      <div class="msg" id="overMsg"></div>
+      <div class="msg" id="workMsg"></div>
     </div>
 
     <div class="card wide">
@@ -90,6 +89,7 @@
 <section class="view" id="faces">
   <div class="card prose">
     <h3>Faces</h3>
-    <p>Face Studio is moving in here from SerenSoma. Until it does, run it from the SerenSoma checkout (<code>Face Studio.cmd</code>).</p>
+    <p><a href="/studio">Open Face Studio</a>: draw and pose the face, give it sounds and build-ups, and send it to
+      the robot. A face can be exported as one <code>.zip</code> to share, and imported from one.</p>
   </div>
 </section>

@@ -11,6 +11,8 @@ says so (see seren_sinew.soma).
 """
 from __future__ import annotations
 
+import asyncio
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
@@ -18,7 +20,7 @@ from typing import Any, Optional
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from seren_meninges.auth import bearer_auth_middleware
+from seren_meninges.auth import DEFAULT_PUBLIC_PATHS, bearer_auth_middleware
 from seren_sinew.cluster.dtos import to_dict
 from seren_sinew.request_log import RequestLoggingMiddleware
 from seren_sinew.soma.client import SomaRobot, SomaVoice
@@ -26,6 +28,8 @@ from seren_sinew.soma.client import SomaRobot, SomaVoice
 from . import __version__ as APP_VERSION
 from ._describe import ACCENT, NAME
 from ._diag import diag
+from .buildups import Buildups
+from .studio import studio_router
 from .config import PsycheionConfig, load_config
 
 try:
@@ -49,7 +53,8 @@ def _unreachable(what: str, url: str, exc: Exception) -> HTTPException:
 
 def create_app(config: Optional[PsycheionConfig] = None, *,
                robot_transport: Optional[httpx.AsyncBaseTransport] = None,
-               voice_transport: Optional[httpx.AsyncBaseTransport] = None) -> FastAPI:
+               voice_transport: Optional[httpx.AsyncBaseTransport] = None,
+               run_buildups: bool = True) -> FastAPI:
     cfg = config or load_config()
     soma = cfg.soma
 
@@ -59,9 +64,16 @@ def create_app(config: Optional[PsycheionConfig] = None, *,
         # (below) doesn't leave this Psycheion holding the old one.
         app.state.robot = SomaRobot(soma.robot.url, soma.robot.resolve, transport=robot_transport)
         app.state.voice = SomaVoice(soma.voice.url, soma.voice.resolve, transport=voice_transport)
+        # The face's build-ups: counted from the voice server's feed, fired on the robot (buildups.py).
+        app.state.buildups = Buildups(app.state.robot, app.state.voice, enabled=cfg.buildups.enabled)
+        task = None
+        if run_buildups and soma.robot.url and soma.voice.url:
+            task = asyncio.create_task(app.state.buildups.run())
         try:
             yield
         finally:
+            if task is not None:
+                task.cancel()
             await app.state.robot.aclose()
             await app.state.voice.aclose()
 
@@ -70,7 +82,10 @@ def create_app(config: Optional[PsycheionConfig] = None, *,
 
     # Open on loopback with no token, like the rest of the family; enforce_server
     # refuses a wider bind without one before this ever runs.
-    app.add_middleware(bearer_auth_middleware(cfg.server.resolve_bearer()))
+    # /studio/... is the Face Studio page and its images: an <img> can't send a bearer, so they
+    # check a session cookie the page gets with one (studio.py). The data is under /api/studio/.
+    app.add_middleware(bearer_auth_middleware(cfg.server.resolve_bearer(), public_paths=DEFAULT_PUBLIC_PATHS | {"/studio"}))
+    app.include_router(studio_router(cfg))
     app.add_middleware(RequestLoggingMiddleware, service_name=NAME, env_prefix="SEREN_PSYCHEION")
 
     try:
@@ -147,6 +162,33 @@ def create_app(config: Optional[PsycheionConfig] = None, *,
             raise _unreachable("voice server", soma.voice.url, exc)
         except (httpx.HTTPError, ValueError) as exc:
             raise _unreachable("voice server", soma.voice.url, exc)
+
+    @app.get("/api/buildups")
+    async def buildups(request: Request):
+        """The face's build-ups: each one's meter, when it last fired and why the last one that filled
+        didn't. Empty when the face declares none."""
+        return JSONResponse(request.app.state.buildups.describe(), headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/buildups")
+    async def buildups_switch(request: Request):
+        """{"enabled": true | false}: build-ups on or off, until Psycheion restarts (the config says
+        where it starts)."""
+        body = await request.json()
+        if not isinstance(body, dict) or not isinstance(body.get("enabled"), bool):
+            raise HTTPException(400, 'expected {"enabled": true or false}')
+        request.app.state.buildups.enabled = body["enabled"]
+        return request.app.state.buildups.describe()
+
+    @app.post("/api/buildups/{name}/test")
+    async def buildup_test(request: Request, name: str):
+        """Fire one by hand to see and hear it, whatever the hours. Not with a call open."""
+        try:
+            why = await request.app.state.buildups.test(name)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _unreachable("voice server", soma.voice.url, exc)
+        if why:
+            raise HTTPException(404 if "no build-up" in why else 409, why)
+        return {"ok": True, "firing": name}
 
     @app.get("/api/soma/touch")
     async def touch(request: Request, after: int = 0):
