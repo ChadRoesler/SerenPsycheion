@@ -83,10 +83,9 @@ function fillVoice(v) {
   $("workEnd").value = w.end; $("workEnd").onchange = e => work({ end: Math.round(Number(e.target.value)) });
 }
 
-async function loadSoma() {
-  let r;
-  try { r = await api("/api/soma"); }
-  catch (e) { pill("pillRobot", "robot ?", false); pill("pillVoice", "voice ?", false); $("bodyFacts").textContent = why(e); return; }
+function somaDown(e) { pill("pillRobot", "robot ?", false); pill("pillVoice", "voice ?", false); $("bodyFacts").textContent = why(e); }
+
+function paintSoma(r) {
   const robot = r.robot, voice = r.voice;
   pill("pillRobot", robot ? "robot" : "robot down", !!robot);
   pill("pillVoice", voice ? (voice.speaking ? "speaking" : voice.device ? "channel open" : "voice") : "voice down", !!voice);
@@ -141,9 +140,9 @@ async function loadTouch() {
 }
 
 // ── Build-ups: the face's, counted and fired here ───────────────────
-async function loadBuildups() {
-  let r;
-  try { r = await api("/api/buildups"); } catch (e) { return; }
+// Painted only when the answer changed (the shell's watch): once a second is often enough to swap a Test
+// button out from under the finger pressing it.
+function paintBuildups(r) {
   $("buOn").checked = r.enabled;
   $("buFiring").textContent = r.firing ? `${r.firing} is going now` : "";
   if (!r.buildups.length) { $("buList").innerHTML = `<p class="muted tiny">This face declares none.</p>`; return; }
@@ -175,11 +174,11 @@ document.addEventListener("DOMContentLoaded", () => {
   $("buOn").onchange = async e => {
     try { await api("/api/buildups", { method: "POST", body: JSON.stringify({ enabled: e.target.checked }) });
           say("buMsg", e.target.checked ? "On." : "Off until you switch them back (or Psycheion restarts)."); }
-    catch (err) { say("buMsg", why(err), true); }
+    catch (err) { e.target.checked = !e.target.checked; say("buMsg", why(err), true); }   // not saved: put the switch back
   };
-  loadBuildups(); setInterval(loadBuildups, 1000);
+  watch("/api/buildups", 1000, paintBuildups);
   $("feedMore").onclick = () => { FEED_SHOWN += FEED_PAGE; paintFeed(); };
-  loadSoma(); loadTouch();
-  setInterval(loadSoma, 5000);
+  watch("/api/soma", 5000, paintSoma, somaDown);
+  loadTouch();
   setInterval(loadTouch, 1000);
 });
