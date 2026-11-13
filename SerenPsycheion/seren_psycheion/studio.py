@@ -1,4 +1,4 @@
-"""Face Studio, served by Psycheion: the page at /studio and the routes it draws on.
+"""Face Studio, served by Psycheion: the viewer's Faces tab and the routes it draws on.
 
 Came from SerenSoma's firmware/tools/face_studio.py on 9 Nov 2026. That was a server of its own on
 127.0.0.1, opening a folder on the machine it ran on. Here the faces live in Psycheion's faces folder
@@ -6,7 +6,12 @@ Came from SerenSoma's firmware/tools/face_studio.py on 9 Nov 2026. That was a se
 comes in by upload, and a face goes out (to share it) as one .zip. The robot is the one Psycheion's
 config names, so the page no longer keeps a robot address or token of its own.
 
-Auth. The page and its images (GET /studio/...) are public to the bearer middleware, because an
+The page. It was one of its own at /studio until 11 Nov 2026; now it's a tab of the viewer, inside
+Meninges' shell like the console. The tab's markup is in viewer/ui/body.html; its stylesheet and script
+are studio_ui/studio.css and studio.js, which viewer/ui/head.html asks for from /studio/. /studio itself
+sends a bookmark on to the tab.
+
+Auth. The studio's files and images (GET /studio/...) are public to the bearer middleware, because an
 <img src> can't send a header; the images check a session cookie instead, which POST
 /api/studio/session hands out to a page that does have the bearer (HttpOnly, SameSite=Strict, a random
 value, never the bearer itself, never in a URL). Everything that reads or writes a face's data is under
@@ -33,7 +38,7 @@ from urllib.parse import unquote
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 try:
     import yaml
@@ -304,7 +309,7 @@ def studio_router(cfg) -> APIRouter:
 
     def need_session(request: Request):
         if not page_session_ok(request):
-            raise HTTPException(401, "open Face Studio from its page, with Psycheion's token")
+            raise HTTPException(401, "open Face Studio from the viewer's Faces tab, with Psycheion's token")
 
     def failed(e: Exception):
         if isinstance(e, PermissionError):
@@ -316,9 +321,22 @@ def studio_router(cfg) -> APIRouter:
     # -- the page -----------------------------------------------------------------------------------
 
     @r.get("/studio", include_in_schema=False)
-    async def page():
-        return HTMLResponse((PAGE_DIR / "face_studio.html").read_text(encoding="utf-8"),
-                            headers={"Cache-Control": "no-store"})
+    async def page(request: Request):
+        """Where Face Studio used to be a page of its own. It's the viewer's Faces tab now; a bookmark
+        (and its ?face=...&sheet=1) still lands on it."""
+        query = f"?{request.url.query}" if request.url.query else ""
+        return RedirectResponse(f"/viewer{query}#faces", status_code=307)
+
+    @r.get("/studio/studio.css", include_in_schema=False)
+    async def page_css():
+        # no-store, like the viewer that asks for it: a cached copy would dress this week's page in last week's
+        return Response((PAGE_DIR / "studio.css").read_bytes(), media_type="text/css; charset=utf-8",
+                        headers={"Cache-Control": "no-store"})
+
+    @r.get("/studio/studio.js", include_in_schema=False)
+    async def page_js():
+        return Response((PAGE_DIR / "studio.js").read_bytes(), media_type="text/javascript; charset=utf-8",
+                        headers={"Cache-Control": "no-store"})
 
     @r.get("/studio/stackChanTop.png", include_in_schema=False)
     async def head_top():
@@ -513,10 +531,13 @@ def studio_router(cfg) -> APIRouter:
 
     @r.post("/api/studio/bot/try")
     async def bot_try(request: Request):
+        """Show a pose on the robot as the page has it. hold: it stands in for neutral there, so the
+        robot's own return to neutral (on every connect, listen and hang up) doesn't take it away;
+        the next try without hold lets it go."""
         b = json.loads(await request.body() or b"{}")
         try:
             lit = facetool.lights_rgb(b.get("lights")) or [0, 0, 0]
-            await robot(request).emotion(b["name"], lights=lit, lightsPulse=facetool.lights_pulse(b.get("lights")),
+            await robot(request).emotion(b["name"], rest=bool(b.get("hold")), lights=lit, lightsPulse=facetool.lights_pulse(b.get("lights")),
                                          look=facetool.sided_pair(b.get("look")), brow=facetool.sided_pair(b.get("brow")),
                                          mouthCycle=int(b.get("mouthCycle") or 0), roll=int(b.get("roll") or 0))
             await robot(request).twitch(b.get("twitch"))

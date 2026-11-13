@@ -1,6 +1,6 @@
-"""Face Studio's server, in Psycheion: the faces folder and nothing outside it, the page public but its
-data behind the bearer and its images behind a session cookie, saves that don't trample, a face that
-travels as one .zip, and a send that builds, uploads and comes back installed."""
+"""Face Studio's server, in Psycheion: the faces folder and nothing outside it, the page (the viewer's
+Faces tab) public but its data behind the bearer and its images behind a session cookie, saves that
+don't trample, a face that travels as one .zip, and a send that builds, uploads and comes back installed."""
 from __future__ import annotations
 
 import io
@@ -28,6 +28,7 @@ class Robot:
         self.up = 500000
         self.got = None
         self.calls = []
+        self.poses = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -42,6 +43,8 @@ class Robot:
             self.up = 500
             return httpx.Response(200, json={"ok": True})
         if path in ("/api/emotion", "/api/twitch"):
+            if path == "/api/emotion":
+                self.poses.append(json.loads(request.content))
             return httpx.Response(200, json={"ok": True})
         return httpx.Response(404, json={"error": "no"})
 
@@ -72,7 +75,7 @@ def _a_face(tmp_path, name="mine"):
 def test_the_page_is_public_its_data_is_not_and_its_images_need_a_session(tmp_path):
     face = _a_face(tmp_path)
     with _client(tmp_path) as c:
-        page = c.get("/studio")
+        page = c.get("/viewer")
         home_no = c.get("/api/studio/home")
         img_no = c.get("/studio/file/mine/iris.png")
         home = c.get("/api/studio/home", headers=AUTH)
@@ -84,6 +87,22 @@ def test_the_page_is_public_its_data_is_not_and_its_images_need_a_session(tmp_pa
     cookie = sess.headers["set-cookie"].lower()
     assert "httponly" in cookie and "samesite=strict" in cookie and BEARER not in cookie
     assert img.status_code == 200 and img.content == (face / "iris.png").read_bytes()
+
+
+def test_the_studio_is_the_viewers_faces_tab_and_the_old_address_lands_on_it(tmp_path):
+    """The tab's markup is in the viewer; its stylesheet and script are asked for by the page's <head>,
+    which can't send a bearer either, so they're public too. /studio was the page until it moved in."""
+    with _client(tmp_path) as c:
+        viewer = c.get("/viewer").text
+        old = c.get("/studio", params={"face": "mine", "sheet": "1"}, follow_redirects=False)
+        css, js = c.get("/studio/studio.css"), c.get("/studio/studio.js")
+        landed = c.get("/studio")
+    assert 'id="faces"' in viewer and 'id="studioGrid"' in viewer and 'id="screen"' in viewer
+    assert 'href="/studio/studio.css"' in viewer and 'src="/studio/studio.js"' in viewer
+    assert old.status_code == 307 and old.headers["location"] == "/viewer?face=mine&sheet=1#faces"
+    assert css.status_code == 200 and css.headers["content-type"].startswith("text/css") and "#faces" in css.text
+    assert js.status_code == 200 and "javascript" in js.headers["content-type"] and "TAB_SHOWN.faces" in js.text
+    assert landed.status_code == 200 and 'id="faces"' in landed.text
 
 
 def test_with_no_bearer_set_nothing_asks(tmp_path):
@@ -212,3 +231,15 @@ def test_try_sends_the_pose_being_worked_on(tmp_path):
         r = c.post("/api/studio/bot/try", headers=AUTH,
                    content=json.dumps({"name": "happy", "lights": {"color": "#ff4fa0", "brightness": 50}}))
     assert r.status_code == 200 and robot.calls == ["/api/emotion", "/api/twitch"]
+
+
+def test_a_tried_pose_is_held_until_its_let_go(tmp_path):
+    """The robot goes back to neutral on every connect, listen and hang up. A held try stands in for
+    neutral there (the firmware's rest), so it stays; trying neutral without hold lets it go."""
+    robot = Robot()
+    with _client(tmp_path, robot) as c:
+        c.post("/api/studio/bot/try", headers=AUTH, content=json.dumps({"name": "smug", "hold": True}))
+        c.post("/api/studio/bot/try", headers=AUTH, content=json.dumps({"name": "neutral"}))
+    held, let_go = robot.poses
+    assert held["name"] == "smug" and held["rest"] is True
+    assert let_go["name"] == "neutral" and "rest" not in let_go

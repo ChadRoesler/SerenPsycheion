@@ -1,180 +1,15 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Face Studio · Psycheion</title>
-<!-- Face Studio: the StackChan custom skin, drawn and animated in a page (2 Nov 2026).
-     Rendering mirrors firmware/main/stackchan/avatar/skins/custom: eyes.cpp, mouth.cpp,
-     custom.cpp, decorator.cpp, face_manifest.cpp; timings from modifiers/*.h. -->
-<style>
-:root { --bg:#17130f; --panel:#221c17; --line:#3a3029; --text:#eadfd2; --dim:#a8998a; --accent:#e0a35c; --warn:#e8b04a; --bad:#e46a5a; --ok:#7cc48a; }
-* { box-sizing:border-box; }
-body { margin:0; background:var(--bg); color:var(--text); font:13px/1.35 system-ui, sans-serif; }
-header { display:flex; gap:10px; align-items:center; padding:8px 12px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
-header h1 { font-size:15px; margin:0 8px 0 0; color:var(--accent); }
-main { display:grid; grid-template-columns:clamp(280px,20vw,360px) minmax(0,1fr) clamp(280px,20vw,360px); gap:10px; padding:10px; height:calc(100vh - 48px); }
-.col { overflow-y:auto; overflow-x:hidden; min-width:0; }
-.col label { min-width:0; }
-.col label select { flex:1 1 0; min-width:0; }
-.siderow { display:grid; grid-template-columns:72px 10px minmax(0,1fr) 10px minmax(0,1fr) auto; gap:4px; align-items:center; margin:3px 0; }
-.siderow select { min-width:0; width:100%; }
-.col label .picker { flex:1 1 0; }
-.picker { display:flex; align-items:center; gap:4px; min-width:0; width:100%; padding:1px 4px; text-align:left; overflow:hidden; }
-.picker span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
-.picker.missing { border-color:var(--bad); color:var(--bad); }
-.thumb { object-fit:contain; image-rendering:pixelated; flex:none; background:repeating-conic-gradient(#3a3029 0 25%, #2c241e 0 50%) 0 0 / 8px 8px; }
-.picker .thumb { width:22px; height:22px; }
-#picker { position:fixed; z-index:6; width:400px; max-height:70vh; display:none; flex-direction:column; gap:6px; background:var(--panel); border:1px solid var(--accent); border-radius:8px; padding:8px; box-shadow:0 8px 28px rgba(0,0,0,.6); }
-#picker.on { display:flex; }
-#pickerFilter { width:100%; }
-#pickerGrid { overflow-y:auto; display:grid; grid-template-columns:repeat(auto-fill, minmax(84px, 1fr)); gap:4px; }
-#pickerGrid button { display:flex; flex-direction:column; align-items:center; gap:2px; padding:3px; min-width:0; }
-#pickerGrid button.on { border-color:var(--accent); background:#3a2d1e; }
-#pickerGrid .thumb { width:64px; height:64px; }
-#pickerGrid span { font-size:10px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.siderow .whole { grid-column:1 / -1; }
-#where { flex:1 1 0; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:10px; }
-section h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 6px; display:flex; justify-content:space-between; align-items:center; }
-label { display:flex; align-items:center; gap:6px; margin:3px 0; }
-label > span:first-child { min-width:84px; color:var(--dim); }
-input, select, button { background:#2c241e; color:var(--text); border:1px solid var(--line); border-radius:5px; padding:3px 6px; font:inherit; }
-input[type=number] { width:60px; }
-input[type=range] { flex:1; min-width:40px; }
-input.range-number { width:56px; flex:none; }
-input[type=checkbox] { accent-color:var(--accent); }
-button { cursor:pointer; } button:hover { border-color:var(--accent); }
-button.primary { background:var(--accent); color:#1b140e; border-color:var(--accent); font-weight:600; }
-button.small { padding:1px 6px; font-size:12px; }
-.row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:3px 0; }
-.sub { border-left:2px solid var(--line); padding-left:8px; margin:6px 0; }
-.muted { color:var(--dim); } .tiny { font-size:11px; }
-#stage { display:flex; flex-direction:column; align-items:center; gap:8px; }
-#screen { image-rendering:pixelated; border:1px solid var(--line); background:#000; cursor:crosshair; }
-#railWrap { display:flex; align-items:stretch; gap:6px; }
-.rail { width:10px; border:1px solid var(--line); border-radius:3px; background:#000; }
-#stage > section { width:100%; flex:none; }
-section.foldable > h2 { cursor:grab; user-select:none; }
-section.movingPanel { opacity:.45; }
-body.movingPanel, body.movingPanel * { cursor:grabbing !important; user-select:none; }
-.dropLine { flex:none; width:100%; height:4px; margin:2px 0 8px; background:var(--accent); border-radius:2px; }
-.headTop { position:relative; width:150px; margin:6px auto; }
-.headTop img { display:block; width:100%; }
-.headZone { position:absolute; left:9%; right:9%; display:flex; align-items:center; justify-content:center; gap:4px;
-  font-size:11px; color:#223; font-weight:600; border-radius:2px; }
-.headZone.on { background:rgba(255,160,60,.65); }
-#emotions { display:flex; flex-wrap:wrap; gap:4px; }
-#emotions button { padding:2px 7px; }
-#emotions button.on { background:var(--accent); color:#1b140e; }
-#emotions button.over::after { content:"*"; color:var(--warn); margin-left:2px; }
-#checks div { margin:2px 0; } .w { color:var(--warn); } .b { color:var(--bad); } .g { color:var(--ok); }
-#dirty { color:var(--warn); }
-table { width:100%; border-collapse:collapse; font-size:12px; }
-td { padding:2px 3px; border-bottom:1px solid var(--line); vertical-align:middle; }
-td input[type=text] { width:90px; }
-.modal { position:fixed; inset:0; background:rgba(0,0,0,.75); display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:30px; z-index:5; }
-.modal.on { display:flex; }
-.sheet { background:var(--panel); border-radius:10px; padding:14px; display:grid; grid-template-columns:repeat(auto-fill, 330px); gap:10px; width:100%; }
-.sheet figure { margin:0; } .sheet canvas { image-rendering:pixelated; border:1px solid var(--line); }
-.sheet figcaption { color:var(--dim); font-size:12px; }
-#welcome { display:none; max-width:560px; margin:12vh auto 0; text-align:center; }
-#welcome h2 { font-size:18px; color:var(--text); text-transform:none; letter-spacing:0; display:block; margin:8px 0; }
-#welcome p { font-size:14px; color:var(--dim); margin:8px 0 16px; }
-#welcome button { font-size:14px; padding:6px 14px; margin:0 4px; }
-button:disabled { opacity:.45; cursor:default; border-color:var(--line); }
-section.foldable > h2 { cursor:pointer; user-select:none; justify-content:flex-start; gap:6px; }
-section.foldable > h2 > label, section.foldable > h2 > button { margin-left:auto; }
-section.foldable > h2::before, .foldhead .chev::before { content:"\25BE"; display:inline-block; width:10px; color:var(--dim); transition:transform .1s; }
-section.foldable.collapsed > h2 { margin-bottom:0; }
-section.foldable.collapsed > h2::before, .fold.collapsed > .foldhead .chev::before { transform:rotate(-90deg); }
-section.foldable.collapsed > :not(h2) { display:none !important; }
-.fold.collapsed > .foldbody { display:none; }
-.foldhead { cursor:pointer; user-select:none; flex-wrap:nowrap; align-items:flex-start; }
-.foldhead .chev { flex:none; }
-.foldhead > span.tiny { min-width:0; }
-.foldhead .thumb { width:22px; height:22px; }
-.foldhead .spacer { flex:1; }
-.multi { flex:1 1 0; min-width:0; }
-.multi > summary { cursor:pointer; background:#2c241e; border:1px solid var(--line); border-radius:5px; padding:3px 6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.multi > summary:hover { border-color:var(--accent); }
-.multi[open] > summary { border-color:var(--accent); }
-.multi .list { max-height:190px; overflow-y:auto; border:1px solid var(--line); border-top:none; border-radius:0 0 5px 5px; padding:3px 6px; }
-.multi .list label { margin:2px 0; }
-.multi .thumb { width:22px; height:22px; }
-#pxpTable { max-height:320px; overflow:auto; border:1px solid var(--line); border-radius:5px; margin:4px 0; }
-#pxpTable:empty { display:none; }
-#log { white-space:pre-wrap; font-size:12px; color:var(--dim); max-height:160px; overflow:auto; }
-</style>
-</head>
-<body>
-<header>
-  <h1>Face Studio</h1>
-  <button id="openFolder" title="Bring in a face someone shared: the .zip Export makes">Import .zip…</button>
-  <select id="faceSel" title="The faces in the open folder"></select>
-  <button id="newFace">New face…</button>
-  <button id="exportFace" title="This face as one file, to share: its face.yaml, art and sounds">Export</button>
-  <button id="uploadFiles" title="PNGs, a .pxp or sounds (.ogg) into this face">Upload files…</button>
-  <input type="file" id="pickZip" accept=".zip" hidden>
-  <input type="file" id="pickFiles" accept=".png,.pxp,.ogg" multiple hidden>
-  <button id="reload" title="Throw away unsaved changes and read this face from disk again">Reload</button>
-  <button id="undo" title="Undo (Ctrl+Z)" disabled>Undo</button>
-  <button id="redo" title="Redo (Ctrl+Y)" disabled>Redo</button>
-  <button id="resetPanels" title="Drag a panel by its title to move it. This puts them all back.">Reset panels</button>
-  <button id="save" class="primary" title="Ctrl+S. The previous version is kept beside it.">Save</button>
-  <span id="dirty"></span>
-  <span class="muted tiny" id="where"></span>
-</header>
-<div id="banner" style="display:none;background:#5a1e17;color:#ffd9d2;padding:8px 12px;font-weight:600"></div>
-<section id="welcome">
-  <h2>No faces in this folder yet</h2>
-  <p id="welcomeWhere"></p>
-  <button id="welcomeOpen">Import a shared face (.zip)…</button>
-  <button id="welcomeNew" class="primary">Start a new face here</button>
-</section>
-<main>
-  <div class="col" id="left"></div>
-  <div class="col" id="stage">
-    <div id="railWrap" title="The rail lights this pose asks for">
-      <div class="rail" id="railL"></div>
-      <canvas id="screen" width="960" height="720"></canvas>
-      <div class="rail" id="railR"></div>
-    </div>
-    <div class="row">
-      <label><span>Zoom</span><select id="zoom"><option>1</option><option>2</option><option selected>3</option><option>4</option></select></label>
-      <label><input type="checkbox" id="ovSockets" checked>sockets</label>
-      <label><input type="checkbox" id="ovAnchors" checked>anchors</label>
-      <label><input type="checkbox" id="ovGrid">centre lines</label>
-      <label><input type="checkbox" id="ovSpots" checked>touch spots</label>
-      <button id="sheetBtn">All emotions</button>
-      <button id="exportBtn" title="Saves every pose as a PNG, and one big sheet of them all, into an export folder beside the face">Export pictures</button>
-    </div>
-    <div class="row tiny" id="inspector"></div>
-    <div class="muted tiny">Drag an anchor (eyes, brows, mouth, the shown decorators) to move it. Arrow keys nudge the selected one, Shift for 5 px.</div>
-    <section style="width:100%">
-      <h2>Import layers from a PixlPunkt .pxp</h2>
-      <div class="row"><select id="pxpSel"></select><button id="pxpLoad">Read layers</button><button id="pxpImport" class="primary">Import checked</button></div>
-      <div class="row tiny">
-        <label><input type="checkbox" id="optSwap" checked>lids drawn per pose: keep them where drawn, blink with 'closed'</label>
-        <label><input type="checkbox" id="optMask" checked>mask the iris by the eye white</label>
-        <label><input type="checkbox" id="optSlide" checked>(sliding lids) slide upper lids to the socket bottom</label>
-        <label><input type="checkbox" id="optFill" checked>fill skin above lids (from the base)</label>
-        <label><input type="checkbox" id="optEyePlace" checked>place the eye and size the socket from the art</label>
-        <label><input type="checkbox" id="optMouthAnchor" checked>set the mouth anchor from the art when there are no mouths yet</label>
-      </div>
-      <div class="muted tiny">Sides come from where the art sits on the canvas, not the layer name: screen right is +x (the viewer's right).
-      </div>
-      <div id="pxpTable"></div>
-      <div id="log"></div>
-    </section>
-  </div>
-  <div class="col" id="right"></div>
-</main>
-<div class="modal" id="sheet"><div class="sheet" id="sheetBody"></div></div>
-<div id="picker"><input id="pickerFilter" type="text" placeholder="Type to filter. Enter picks the first."><div id="pickerGrid"></div></div>
-
-<script>
+// Face Studio: the Faces tab of the viewer. The StackChan custom skin, drawn and animated in a page
+// (2 Nov 2026). Rendering mirrors SerenSoma's firmware/main/stackchan/avatar/skins/custom: eyes.cpp,
+// mouth.cpp, custom.cpp, decorator.cpp, face_manifest.cpp; timings from modifiers/*.h.
+//
+// The viewer loads this beside the console's script (viewer/ui/head.html), so all of it is inside one
+// function: the two share a page, and each has its own $, api and paintRails. From the shell it takes
+// getToken and the token modal; from the console's script, TAB_SHOWN.
+(() => {
 "use strict";
 const $ = (s, el = document) => el.querySelector(s);
+const VIEW = document.getElementById("faces"), GRID = $("#studioGrid"), PAGE_TITLE = document.title;
+const shown = () => VIEW.classList.contains("active");   // the Faces tab is the one being looked at
 const SW = 320, SH = 240;
 let HOME = null, DIR = "", DOC = null, FILES = [], SOUNDS = [], DIRTY = false, EMO = "neutral";
 const IMG = {};            // name -> {img, flip}
@@ -189,26 +24,21 @@ const centred = (outer, inner) => Math.trunc((outer - inner) / 2);   // LV_ALIGN
 const rint = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1)); // Random::getInt, inclusive
 
 // ----------------------------------------------------------------- server calls
-// Psycheion's token: the same one its console keeps (localStorage "seren_token"), so it's asked for once.
-const TOKEN_KEY = "seren_token";
-function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; } }
+// Psycheion's token is the shell's (🔑 Token, top right): the console and the studio ask for it once.
+// The shell's own api() calls everything JSON; this one also sends a PNG or a .zip as it is.
 function authed(opts) {
   const o = Object.assign({}, opts || {});
   o.headers = Object.assign({}, o.headers || {});
-  const t = token(); if (t) o.headers.Authorization = "Bearer " + t;
+  const t = getToken(); if (t) o.headers.Authorization = "Bearer " + t;
   return o;
 }
-function askToken() {
-  const t = prompt("Psycheion's token (the one its console asks for):", "");
-  if (t == null) return false;
-  try { localStorage.setItem(TOKEN_KEY, t.trim()); } catch (_) { /* private window: this page only */ }
-  return true;
-}
-async function api(path, opts, retried) {
+const WANTS_TOKEN = "Psycheion wants its token (🔑 Token, top right).";
+let NEEDS_TOKEN = false;
+async function api(path, opts) {
   let r;
   try { r = await fetch(path, authed(opts)); }
   catch (err) { banner("Can't reach Psycheion. Is it running?"); throw err; }
-  if (r.status === 401 && !retried && askToken()) { await session(); return api(path, opts, true); }
+  if (r.status === 401) { NEEDS_TOKEN = true; banner(WANTS_TOKEN); throw new Error(WANTS_TOKEN); }
   const ct = r.headers.get("Content-Type") || "";
   const body = ct.includes("json") ? await r.json() : r;
   const why = body && (body.detail || body.error);
@@ -220,6 +50,17 @@ async function api(path, opts, retried) {
 // for /studio/ first; it's HttpOnly and never the token itself.
 async function session() { try { await fetch("/api/studio/session", authed({ method: "POST" })); } catch (_) { /* api() says */ } }
 function banner(msg) { const b = $("#banner"); b.textContent = msg; b.style.display = msg ? "block" : "none"; }
+// A token saved in the shell's modal is tried straight away. A face already open stays as it is, with
+// whatever's unsaved: only the session is asked for again.
+for (const name of ["saveToken", "clearToken"]) {
+  const shells = window[name];
+  window[name] = () => {
+    shells();
+    if (!STARTED || !NEEDS_TOKEN) return;
+    NEEDS_TOKEN = false; banner("");
+    session().then(() => { if (!DOC) return home(); });
+  };
+}
 function starterDoc(name) {
   return { face: { name: name || "my-face", background: "#16120F", mirror_eyes: true, drawn_eye: "right" },
            parts: { eyes: { socket_size: [64, 52], iris_parallax: 25, right_pos: [52, -18], left_pos: [-52, -18], lids_upper: {}, lids_lower: {} },
@@ -667,7 +508,7 @@ function draw() {
   $("#liveInfo") && ($("#liveInfo").textContent =
     `eye weight ${st.eyeWeight}${LIVE.blinkClosed ? " (blink)" : ""} · mouth weight ${st.mouthWeight} · gaze [${st.eyePos}]`);
 }
-function loop() { draw(); requestAnimationFrame(loop); }
+function loop() { if (shown()) draw(); requestAnimationFrame(loop); }   // on another tab, nothing is drawn
 
 function setAnchor(key, x, y, rebuild = true) {
   const sym = $("#symLock") ? $("#symLock").checked : true;
@@ -732,7 +573,7 @@ window.addEventListener("mouseup", () => {
   DRAG = null;
 });
 window.addEventListener("keydown", ev => {
-  if (!SEL || ["INPUT", "SELECT"].includes(document.activeElement.tagName)) return;
+  if (!shown() || !SEL || ["INPUT", "SELECT"].includes(document.activeElement.tagName)) return;
   const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
   if (!d) return;
   ev.preventDefault();
@@ -745,7 +586,8 @@ window.addEventListener("keydown", ev => {
 // What's folded is remembered in the browser, and survives the panels being rebuilt on every edit.
 const FOLDS = JSON.parse(localStorage.studioFolds || "{}");
 // first time here: the face and the pose are open, the rest is out of the way until it's wanted
-const FOLDED_AT_FIRST = new Set(["eyes", "mouth", "brows", "decorators", "touch spots", "head touches", "motion preview", "robot"]);
+const FOLDED_AT_FIRST = new Set(["eyes", "mouth", "brows", "decorators", "touch spots", "head touches", "sounds", "build-ups",
+                                 "layers", "import layers", "motion preview", "robot", "checks"]);
 function isFolded(key, fallback) { return key in FOLDS ? FOLDS[key] : fallback; }
 function setFolded(key, on) { FOLDS[key] = on; localStorage.studioFolds = JSON.stringify(FOLDS); }
 const isControl = ev => ev.target.closest("button, input, select, label, summary");
@@ -764,13 +606,13 @@ function applyLayout() {
   }
   for (const s of all.values()) s.parentElement.append(s);   // a panel the layout hasn't heard of goes last
 }
-function clearHome(home) { for (const s of document.querySelectorAll(`main section[data-home="${home}"]`)) s.remove(); }
+function clearHome(home) { for (const s of GRID.querySelectorAll(`section[data-home="${home}"]`)) s.remove(); }
 function settle(home) {
   for (const s of columnSections(home)) if (!s.dataset.home) s.dataset.home = home;
   for (const c of COLUMNS) foldSections($("#" + c));
   applyLayout();
 }
-document.querySelector("main").addEventListener("pointerdown", ev => {
+GRID.addEventListener("pointerdown", ev => {
   const h = ev.target.closest("section.foldable > h2");
   if (!h || ev.button || isControl(ev)) return;
   const sec = h.parentElement, x0 = ev.clientX, y0 = ev.clientY;
@@ -805,9 +647,58 @@ document.querySelector("main").addEventListener("pointerdown", ev => {
 for (const s of columnSections("stage")) s.dataset.home = "stage";
 $("#resetPanels").onclick = () => {
   LAYOUT = null; delete localStorage.studioLayout;
-  for (const s of document.querySelectorAll('main section[data-home="stage"]')) $("#stage").append(s);
+  for (const s of GRID.querySelectorAll('section[data-home="stage"]')) $("#stage").append(s);
+  for (const k of Object.keys(RAILS)) delete RAILS[k];
+  applyRails();
   buildAll();
 };
+
+// ----------------------------------------------------------------- the side columns
+// Each side column folds away behind the handle in its gutter, and is as wide as the gutter is dragged.
+// Kept in the browser, like the folds.
+const RAILS = JSON.parse(localStorage.studioRails || "{}");   // {L: px, R: px, noL: true, noR: true}
+function applyRails() {
+  for (const k of ["L", "R"]) {
+    const shut = !!RAILS["no" + k], handle = $(`#gut${k} button`), what = k === "L" ? "the parts" : "the pose";
+    VIEW.classList.toggle("no" + k, shut);
+    if (RAILS[k]) VIEW.style.setProperty("--" + k, RAILS[k] + "px"); else VIEW.style.removeProperty("--" + k);
+    handle.textContent = (k === "L") !== shut ? "⟨" : "⟩";   // it points the way the column will go
+    handle.title = `${shut ? "Show" : "Hide"} ${what}. Drag the line to make them wider or narrower.`;
+    handle.setAttribute("aria-expanded", String(!shut));
+  }
+  localStorage.studioRails = JSON.stringify(RAILS);
+  if (DOC && !localStorage.studioZoom) setZoom(fitZoom());   // a zoom nobody picked follows the room there is
+}
+for (const k of ["L", "R"]) {
+  const gutter = $("#gut" + k), col = $(k === "L" ? "#left" : "#right");
+  let dragged = false;
+  gutter.addEventListener("pointerdown", ev => {
+    if (ev.button || RAILS["no" + k]) return;
+    const x0 = ev.clientX, w0 = col.getBoundingClientRect().width;
+    const move = e => {
+      const dx = e.clientX - x0;
+      if (!dragged && Math.abs(dx) < 4) return;
+      dragged = true; document.body.classList.add("sizingRail");
+      RAILS[k] = clamp(Math.round(w0 + (k === "L" ? dx : -dx)), 240, 560);
+      VIEW.style.setProperty("--" + k, RAILS[k] + "px");
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
+      if (!dragged) return;
+      document.body.classList.remove("sizingRail");
+      applyRails();
+      setTimeout(() => { dragged = false; }, 0);   // after the click this release may still bring
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+  });
+  $("button", gutter).onclick = () => {
+    if (dragged) return;                           // that was the end of a drag, not a press on the handle
+    RAILS["no" + k] = !RAILS["no" + k];
+    if (!RAILS["no" + k]) delete RAILS["no" + k];
+    applyRails();
+  };
+}
+applyRails();
 function foldSections(root) {
   for (const sec of root.querySelectorAll(":scope > section")) {
     const h = sec.querySelector(":scope > h2"); if (!h) continue;
@@ -941,7 +832,7 @@ $("#undo").onclick = undo; $("#redo").onclick = redo;
 function dirty(on = true) {
   if (on) historyNote();
   DIRTY = on; $("#dirty").textContent = on ? "unsaved changes" : "";
-  document.title = `${on ? "* " : ""}${(DOC && DOC.face && DOC.face.name) || "Face Studio"} - Face Studio`;
+  document.title = (on ? "* " : "") + PAGE_TITLE;
   refreshChecks();
 }
 
@@ -1013,10 +904,9 @@ function buildLeftPanels() {
     pair("Right pos", () => F.brpos, v => { b.right_pos = v; if ($("#symLock").checked) b.left_pos = [-v[0], v[1]]; }),
     pair("Left pos", () => F.blpos, v => { b.left_pos = v; if ($("#symLock").checked) b.right_pos = [-v[0], v[1]]; })));
 
+  // the left is what the face is made of; what it does about a touch kept up (build-ups) is on the right
   L.append(touchPanel(F));
-  L.append(headPanel(F));
   L.append(soundsPanel());
-  L.append(buildupsPanel(F));
   const d = sect("decorators");
   L.append(el("section", {}, el("h2", {}, "Decorators"),
     namedMap("Shown when an emotion names them. Pulse wobbles 15° to 20° every half second.", d,
@@ -1034,6 +924,7 @@ function buildLeftPanels() {
           [fileSel("Image", () => s.image, v => s.image = v, false), el("label", {}, el("span", {}, "Anchor"), anc),
            pair("Offset", () => s.offset || [0, 0], v => s.offset = v), el("label", {}, el("span", {}, "Animate"), ani)]);
       })));
+  L.append(headPanel(F));
 }
 function touchPanel(F) {
   const t = DOC.touch || {}, poses = Object.keys(F.emotions);
@@ -1133,14 +1024,14 @@ function soundsPanel() {
     return el("div", { class: "row" }, el("b", { style: "min-width:7em" }, name), sel,
       el("button", { type: "button", title: "Play it here", onclick: () => play(sel.value) }, "▶"),
       el("button", { type: "button", title: "Take it off the face (the file stays)", onclick: () => {
-        delete snd[name]; if (!Object.keys(snd).length) delete DOC.sounds; dirty(); buildLeft(); } }, "✕"));
+        delete snd[name]; if (!Object.keys(snd).length) delete DOC.sounds; dirty(); buildAll(); } }, "✕"));   // all: build-ups list the sounds
   });
   const add = el("button", { type: "button", onclick: () => {
     if (!SOUNDS.length) return alert("Upload a sound first (Upload files…, an .ogg). From a WAV: ffmpeg -i in.wav -ac 1 -c:a libopus -b:a 24k out.ogg");
     const n = (prompt("Name for the sound (a-z, 0-9, - and _):", "") || "").trim().toLowerCase();
     if (!n) return;
     if (!SOUND_NAME.test(n)) return alert("A sound's name is a-z, 0-9, - and _, up to 24.");
-    snd[n] = SOUNDS[0]; dirty(); buildLeft();
+    snd[n] = SOUNDS[0]; dirty(); buildAll();
   } }, "+ sound");
   if (!Object.keys(snd).length) delete DOC.sounds;
   return el("section", {}, el("h2", {}, "Sounds"),
@@ -1185,7 +1076,7 @@ function buildupsPanel(F) {
       el("label", {}, el("span", {}, "Flash"), flashOn, flash),
       el("label", {}, el("span", {}, "Sound"), select("sound", sounds, "(none)")),
       el("div", { class: "row" }, test,
-        el("button", { type: "button", onclick: () => { if (confirm(`Remove ${name}?`)) { delete bu[name]; if (!Object.keys(bu).length) delete DOC.buildups; dirty(); buildLeft(); } } }, "Remove")),
+        el("button", { type: "button", onclick: () => { if (confirm(`Remove ${name}?`)) { delete bu[name]; if (!Object.keys(bu).length) delete DOC.buildups; dirty(); buildRight(); } } }, "Remove")),
     ]);
   };
   const add = el("button", { type: "button", onclick: () => {
@@ -1193,7 +1084,7 @@ function buildupsPanel(F) {
     if (!n) return;
     if (!SOUND_NAME.test(n)) return alert("A build-up's name is a-z, 0-9, - and _, up to 24.");
     bu[n] = { touch: "scratching", seconds: 15, gap: 3, rest: 120, pose: poses.includes("surprised") ? "surprised" : poses[0], hold_ms: 4000 };
-    setFolded(`bu:${n}`, false); dirty(); buildLeft();
+    setFolded(`bu:${n}`, false); dirty(); buildRight();
   } }, "+ build-up");
   const items = Object.keys(bu).map(one);
   if (!Object.keys(bu).length) delete DOC.buildups;
@@ -1259,10 +1150,15 @@ function robotPanel(pose) {
       act("Try this pose", "Show this pose on the robot with its twitch, rail color, look and brow moves as they are here, using the art it already has", async () => {
         const tw = pose.motion && pose.motion.twitch;
         botSay("Asking the robot…");
-        await api("/api/studio/bot/try", { method: "POST", body: JSON.stringify({ name: EMO, twitch: tw || null, lights: pose.lights || null,
+        // held: the robot goes back to neutral on every connect, listen and hang up, and that would take it away
+        await api("/api/studio/bot/try", { method: "POST", body: JSON.stringify({ name: EMO, hold: true, twitch: tw || null, lights: pose.lights || null,
           look: pose.look || null, brow: pose.brow || null, mouthCycle: (pose.motion && pose.motion.mouth_cycle) || 0,
           roll: (pose.motion && pose.motion.roll) || 0 }) });
-        botSay(`Showing ${EMO} on the robot.`);
+        botSay(`Holding ${EMO} on the robot until you let it go.`);
+      }),
+      act("Let go", "Back to neutral: the robot stops holding the pose that was tried", async () => {
+        await api("/api/studio/bot/try", { method: "POST", body: JSON.stringify({ name: "neutral" }) });
+        botSay("Let go: the robot is back to neutral.");
       }),
       act("Send this face", "Save, build it, send it over, reboot. The old face stays on the card.", async () => {
         if (DIRTY && !(await saveFace())) { botSay("Not sent: the face wasn't saved."); return; }
@@ -1280,14 +1176,32 @@ function robotPanel(pose) {
 }
 
 let DEC_OPEN = false, DEC_SCROLL = 0;
+const NEW_EMOTE = "@new";   // the first line of the emotion list: not a pose, a way to make one
 function buildRight() { clearHome("right"); buildRightPanels(); settle("right"); }
 function buildRightPanels() {
   const R = $("#right");
   const F = resolve(), over = DOC.emotions || {};
   const pose = F.emotions[EMO] || F.emotions.neutral;
-  const list = el("div", { id: "emotions" });
-  for (const n of Object.keys(F.emotions))
-    list.append(el("button", { class: (n === EMO ? "on " : "") + (over[n] ? "over" : ""), onclick: () => { EMO = n; LIVE.eyeOverride = null; buildRight(); } }, n));
+  // The pose being worked on, picked from one list: the stock emotions, then the face's own. A stock one
+  // the face has changed carries a star.
+  const names = Object.keys(F.emotions), stock = names.filter(n => n in HOME.defaults), own = names.filter(n => !(n in HOME.defaults));
+  const emoOption = n => el("option", { value: n }, n + (over[n] && n in HOME.defaults ? " *" : ""));
+  const emoSel = el("select", { id: "emoSel", title: "The pose being worked on. Up and down step through them.", onchange: ev => {
+    const v = ev.target.value;
+    if (v === NEW_EMOTE) {
+      ev.target.value = EMO;
+      const n = (prompt("New emotion name (your backend emits it, e.g. smug):") || "").trim();
+      if (!n || n === NEW_EMOTE) return;
+      if (!F.emotions[n]) { DOC.emotions = DOC.emotions || {}; DOC.emotions[n] = {}; dirty(); }   // a name it has is shown, not wiped
+      EMO = n;
+    } else EMO = v;
+    LIVE.eyeOverride = null; buildRight();
+    $("#emoSel").focus();                          // the list was rebuilt: keep the keys on it
+  } },
+    el("option", { value: NEW_EMOTE }, "New custom emote…"),
+    el("optgroup", { label: "Default emotes" }, ...stock.map(emoOption)),
+    ...(own.length ? [el("optgroup", { label: "Custom emotes" }, ...own.map(emoOption))] : []));
+  emoSel.value = EMO;
   const o = () => { DOC.emotions = DOC.emotions || {}; DOC.emotions[EMO] = DOC.emotions[EMO] || {}; return DOC.emotions[EMO]; };
   // one picker per side; the same on both is stored as one name, different as {left, right}
   const sided = (label, field, keys, current) => {
@@ -1314,11 +1228,8 @@ function buildRightPanels() {
     return el("label", {}, el("span", {}, label), el("input", { type: "range", min: lo, max: hi, value: get(),
       oninput: ev => { set(Number(ev.target.value)); dirty(); } }));
   };
-  R.append(el("section", {}, el("h2", {}, "Emotions", el("button", { class: "small", onclick: () => {
-      const n = prompt("New emotion name (your backend emits it, e.g. smug):"); if (n) { DOC.emotions = DOC.emotions || {}; DOC.emotions[n.trim()] = {}; EMO = n.trim(); dirty(); buildRight(); } } }, "+ custom")),
-    list, el("div", { class: "muted tiny" }, "* = changed from the default pose")));
   const custom = !(EMO in HOME.defaults);
-  const poseButtons = custom ? el("span", { style: "margin-left:auto;display:flex;gap:4px" },
+  const poseButtons = custom ? el("span", { style: "display:flex;gap:4px" },
     el("button", { class: "small", onclick: () => {
       const typed = prompt(`Rename ${EMO} to:`, EMO);
       const name = typed && typed.trim();
@@ -1332,7 +1243,10 @@ function buildRightPanels() {
       if (!confirm(`Delete the pose ${EMO}? Ctrl+Z brings it back.`)) return;
       delete DOC.emotions[EMO]; EMO = "neutral"; dirty(); buildRight();
     } }, "delete")) : (over[EMO] ? el("button", { class: "small", onclick: () => { delete DOC.emotions[EMO]; dirty(); buildRight(); } }, "reset to default") : "");
-  R.append(el("section", {}, el("h2", {}, `Pose: ${EMO}`, poseButtons),
+  R.append(el("section", {}, el("h2", {}, "Pose"),
+    el("div", { class: "row emoRow" }, el("span", { class: "muted" }, "Emotion"), emoSel, poseButtons),
+    ...(stock.some(n => over[n]) ? [el("div", { class: "muted tiny" }, "* = changed from the default pose")] : []),
+    el("hr"),
     sided("Upper lid", "upper", Object.keys(F.upper), pose.lid.upper), sided("Lower lid", "lower", Object.keys(F.lower), pose.lid.lower),
     choice("Mouth", "mouth", Object.keys(F.shapes)),
     ...(Object.keys(F.browShapes).length ? [sided("Brow shape", "brow_shape", Object.keys(F.browShapes), pose.browS)] : []),
@@ -1513,8 +1427,10 @@ function buildRightPanels() {
     el("label", {}, el("span", {}, "Gaze x"), el("input", { type: "range", min: -100, max: 100, value: LIVE.gaze[0], oninput: ev => { LIVE.idle = false; LIVE.gaze[0] = Number(ev.target.value); } })),
     el("label", {}, el("span", {}, "Gaze y"), el("input", { type: "range", min: -100, max: 100, value: LIVE.gaze[1], oninput: ev => { LIVE.idle = false; LIVE.gaze[1] = Number(ev.target.value); } })),
     el("div", { id: "liveInfo", class: "muted tiny" })));
+  R.append(buildupsPanel(F));
   R.append(robotPanel(pose));
-  R.append(el("section", {}, el("h2", {}, "Checks"), el("div", { id: "checks" })));
+  // folded, the title still says how many: a problem isn't out of sight
+  R.append(el("section", {}, el("h2", {}, "Checks", el("span", { id: "checksCount", class: "count" })), el("div", { id: "checks" })));
   refreshChecks();
 }
 function syncSliders() { const m = $("#mouthW"); if (m) m.value = LIVE.mouthWeight; }
@@ -1565,6 +1481,8 @@ function refreshChecks() {
   for (const [n, p] of Object.entries(F.emotions)) if (p.decoratorMissing) add("muted", `${n} asks for decorator "${p.decoratorMissing}" (not drawn; shows none)`);
   for (const name of used) if (name.replace(/\.png$/, "").length + 8 > HOME.max_asset_name) add("w", `${name}: long name; with a build prefix it may pass the ${HOME.max_asset_name}-character asset limit`);
   box.innerHTML = "";
+  const real = out.filter(x => x[0] !== "muted"), count = $("#checksCount");
+  if (count) { count.textContent = real.length || ""; count.className = "count" + (real.some(x => x[0] === "b") ? " b" : real.length ? " w" : ""); }
   if (!out.some(x => x[0] !== "muted")) box.append(el("div", { class: "g" }, "Nothing wrong that I can see."));
   for (const [c, m] of out) box.append(el("div", { class: c }, "• " + m));
 }
@@ -1653,7 +1571,8 @@ function suggest(name, bb) {
   if ((m = n.match(/^dec_(.+?)(?:_[lr])?$/))) return ["decorator", { anger: "angry", exclamation: "exclaim", ques: "question" }[m[1]] || m[1]];
   return ["skip", ""];
 }
-const log = msg => { $("#log").textContent += msg + "\n"; $("#log").scrollTop = 1e9; };
+// The log is in the Import layers panel; its last line is also said in the bar, where a folded panel can't hide it.
+const log = msg => { $("#log").textContent += msg + "\n"; $("#log").scrollTop = 1e9; $("#studioSaid").textContent = $("#studioSaid").title = msg; };
 $("#pxpLoad").onclick = async () => {
   const path = $("#pxpSel").value; if (!path) return;
   $("#pxpTable").textContent = "reading…";
@@ -1853,7 +1772,7 @@ $("#pxpImport").onclick = async () => {
   if ($("#optMask").checked && (irisBig || rig)) { f.iris_mask = "sclera"; log("the iris is masked by the eye white"); }
   STAMP = Date.now(); for (const k in IMG) delete IMG[k]; for (const k in TOPROW) delete TOPROW[k];
   FILES.sort(); dirty(); buildAll();
-  log("Done. Check it in the Layers row under the face, then Save.");
+  log("Done. Check it in the Layers panel under the face, then Save.");
 };
 // mouth anchor is relative to the screen centre; centredSpan wants the outer box: a box of SW centred on the anchor
 // (centred(SW, w) + anchor) is exactly how the firmware places a mouth frame of width w.
@@ -1885,7 +1804,7 @@ function buildInspector() {
   const box = $("#inspector"); if (!box) return;
   box.innerHTML = "";
   const tog = (obj, key, label) => el("label", {}, el("input", { type: "checkbox", checked: obj[key], onchange: ev => { obj[key] = ev.target.checked; } }), label);
-  box.append(el("b", {}, "Layers:"), ...["base", "sclera", "iris", "lower", "upper", "brows", "mouth", "hair", "decorator"].map(k => tog(SHOW, k, k === "sclera" ? "whites" : k)),
+  box.append(...["base", "sclera", "iris", "lower", "upper", "brows", "mouth", "hair", "decorator"].map(k => tog(SHOW, k, k === "sclera" ? "whites" : k)),
              el("span", { class: "muted" }, "|"), tog(SHOW, "left", "left side"), tog(SHOW, "right", "right side"),
              el("span", { class: "muted" }, "|"), tog(INSPECT, "xray", "x-ray lids"), tog(INSPECT, "outlines", "outlines"),
              tog(INSPECT, "sweep", "sweep gaze to the edges"));
@@ -1906,7 +1825,8 @@ async function openFace(dir) {
   const own = HOME.pxps.find(p => p.startsWith(dir + "/") && !p.slice(dir.length + 1).includes("/"));
   if (own) $("#pxpSel").value = own;
   for (const k in IMG) delete IMG[k]; for (const k in TOPROW) delete TOPROW[k];
-  $("#where").textContent = "";   // the face's name is in the picker; where Psycheion keeps it is its own business
+  $("#studioSaid").textContent = $("#studioSaid").title = "";
+  if (fresh) setFolded("import layers", false);   // nothing drawn yet: the way to bring art in is open
   dirty(fresh); buildAll();
   historyStart(!fresh);
   if (fresh) log(`No face.yaml in ${dir} yet: started a new face. Import layers from the .pxp, then Save.`);
@@ -1920,7 +1840,8 @@ async function saveFace() {
   const send = force => fetch(`/api/studio/save?dir=${encodeURIComponent(DIR)}&since=${FILE_STAMP}${force ? "&force=1" : ""}`, authed({ method: "POST", body: JSON.stringify(DOC) }));
   let r;
   try { r = await send(false); }
-  catch (err) { banner("Can't reach the studio server. Is the Face Studio window still open? Double-click Face Studio.cmd again."); throw err; }
+  catch (err) { banner("Can't reach Psycheion. Is it running?"); throw err; }
+  if (r.status === 401) { NEEDS_TOKEN = true; banner(WANTS_TOKEN); return false; }
   if (r.status === 409 && (await r.clone().json()).changed) {
     if (!confirm("face.yaml changed on disk since this page opened it, and this page doesn't have those changes.\n\nOK saves this page over it (the file on disk is kept as a face.yaml.bak).\nCancel keeps both as they are, so you can copy what you want and press Reload.")) {
       log("Not saved: face.yaml changed on disk. Reload picks up the file, and drops what's unsaved on this page.");
@@ -1928,7 +1849,7 @@ async function saveFace() {
     }
     r = await send(true);
   }
-  if (!r.ok) { const e = await r.json().catch(() => ({})); banner(`The studio server said: ${e.error || r.status}`); throw new Error(e.error || r.status); }
+  if (!r.ok) { const e = await r.json().catch(() => ({})); banner(`Psycheion said: ${e.detail || e.error || r.status}`); throw new Error(e.detail || e.error || r.status); }
   banner("");
   FILE_STAMP = (await r.json()).stamp || FILE_STAMP;
   HIST.now = JSON.stringify(DOC); HIST.saved = HIST.now;
@@ -1938,6 +1859,7 @@ async function saveFace() {
 }
 $("#save").onclick = saveFace;
 window.addEventListener("keydown", ev => {
+  if (!shown()) return;                            // Ctrl+S on the console isn't a save here
   const ctrl = ev.ctrlKey || ev.metaKey, k = ev.key.toLowerCase();
   // a box being typed in keeps its own undo for the text
   const typing = document.activeElement.matches("input[type=text], input[type=number]");
@@ -2002,9 +1924,11 @@ $("#newFace").onclick = newFace; $("#welcomeNew").onclick = newFace;
 $("#openFolder").onclick = importZip; $("#welcomeOpen").onclick = importZip;
 $("#exportFace").onclick = exportFace; $("#uploadFiles").onclick = uploadFiles;
 function setZoom(z) { ZOOM = z; screen.width = SW * z; screen.height = SH * z; $("#zoom").value = String(z); }
-// The biggest whole zoom that fits and leaves the controls under it in view. Whole only: it's pixel art.
+// The biggest whole zoom that fits the middle column and leaves the row under the screen in view. Whole
+// only: it's pixel art.
 function fitZoom() {
-  return clamp(Math.floor(Math.min(($("#stage").clientWidth - 40) / SW, (innerHeight - 230) / SH)), 1, 4);   // 40: the rails
+  const stage = $("#stage");
+  return clamp(Math.floor(Math.min((stage.clientWidth - 40) / SW, (stage.clientHeight - 70) / SH)), 1, 4);   // 40: the rails
 }
 $("#zoom").onchange = ev => { setZoom(Number(ev.target.value)); localStorage.studioZoom = ev.target.value; };
 window.addEventListener("beforeunload", ev => { if (DIRTY) { ev.preventDefault(); ev.returnValue = ""; } });
@@ -2029,21 +1953,35 @@ async function home(open) {
   const all = [...HOME.faces, ...(HOME.waiting || [])];
   const want = open || [Q.get("face"), localStorage.studioFace, all.find(f => /studio/.test(f)), all.find(f => /portrait/.test(f))].find(f => f && all.includes(f)) || all[0];
   $("#welcome").style.display = want ? "none" : "block";
-  $("main").style.display = want ? "" : "none";
+  GRID.style.display = want ? "" : "none";
   $("#welcomeWhere").textContent = "No faces in Psycheion yet. Start one, or import one someone shared.";
   for (const id of ["#reload", "#save", "#exportFace", "#uploadFiles"]) $(id).disabled = !want;
   $("#faceSel").style.display = want ? "" : "none";
   if (want) setZoom(Number(localStorage.studioZoom) || fitZoom());
-  $("#where").textContent = "";
   if (want) { fs.value = want; await openFace(want); }
   if (!open && Q.get("sheet")) $("#sheetBtn").onclick();
 }
-session().then(() => home()).then(() => requestAnimationFrame(loop));
+
+// ----------------------------------------------------------------- in the viewer
+// The studio fills the window under the shell's bar, so the bar's height is measured, not guessed.
+const TOPBAR = $(".seren-topbar");
+const underTheBar = () => VIEW.style.setProperty("--top", TOPBAR.offsetHeight + "px");
+underTheBar();
+new ResizeObserver(underTheBar).observe(TOPBAR);
+window.addEventListener("resize", () => { if (shown() && DOC && !localStorage.studioZoom) setZoom(fitZoom()); });
+// Nothing is asked of Psycheion until the tab is first looked at: the console doesn't pay for the studio.
+let STARTED = false;
+TAB_SHOWN.faces = () => {
+  if (STARTED) { if (DOC && !localStorage.studioZoom) setZoom(fitZoom()); return; }
+  STARTED = true;
+  requestAnimationFrame(loop);
+  session().then(() => home()).catch(() => { /* api() said why, in the banner */ });
+};
 
 // Every slider gets a number you can type, so nobody nudges one with the arrow keys forty times.
 // It watches the page rather than each panel, so sliders built later are covered without touching
 // the code that builds them. Typing fires the slider's own input event, so its handler does the work.
-function pairSliders(root = document) {
+function pairSliders(root = VIEW) {                 // the studio's own: the console's sliders have their numbers
   for (const range of root.querySelectorAll('input[type=range]')) {
     if (range.dataset.paired) continue;
     range.dataset.paired = "1";
@@ -2065,7 +2003,7 @@ function pairSliders(root = document) {
 }
 const pairedSliders = [];
 pairSliders();
-new MutationObserver(() => pairSliders()).observe(document.body, { childList: true, subtree: true });
+new MutationObserver(() => pairSliders()).observe(VIEW, { childList: true, subtree: true });
 // Some sliders are moved by code (the live preview), so the boxes follow unless being typed in.
 setInterval(() => {
   for (let i = pairedSliders.length - 1; i >= 0; i--) {
@@ -2074,6 +2012,4 @@ setInterval(() => {
     if (document.activeElement !== box && box.value !== range.value) box.value = range.value;
   }
 }, 150);
-</script>
-</body>
-</html>
+})();

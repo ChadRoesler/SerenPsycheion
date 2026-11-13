@@ -44,7 +44,7 @@ include = ["seren_psycheion*"]
 # 500s on an installed copy while working from the checkout.
 [tool.setuptools.package-data]
 seren_psycheion = ["viewer/ui/*.html", "viewer/ui/*.css", "viewer/ui/*.js", "faces/THIRD_PARTY.md",
-                   "studio_ui/*.html", "studio_ui/*.png"]
+                   "studio_ui/*.css", "studio_ui/*.js", "studio_ui/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

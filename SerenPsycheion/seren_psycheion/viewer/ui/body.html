@@ -86,10 +86,80 @@
   </div>
 </section>
 
+<!-- Face Studio. Its looks and its workings are studio_ui/studio.css and studio.js, which head.html brings
+     in; this is only what they hang on. The side columns' panels are built by the script. -->
 <section class="view" id="faces">
-  <div class="card prose">
-    <h3>Faces</h3>
-    <p><a href="/studio">Open Face Studio</a>: draw and pose the face, give it sounds and build-ups, and send it to
-      the robot. A face can be exported as one <code>.zip</code> to share, and imported from one.</p>
+  <div id="banner" role="alert"></div>
+  <div class="studioBar">
+    <select id="faceSel" title="The faces in Psycheion's faces folder"></select>
+    <button id="newFace">New face…</button>
+    <button id="openFolder" title="Bring in a face someone shared: the .zip Export makes">Import .zip…</button>
+    <button id="uploadFiles" title="PNGs, a .pxp or sounds (.ogg) into this face">Upload files…</button>
+    <button id="exportFace" title="This face as one file, to share: its face.yaml, art and sounds">Export</button>
+    <input type="file" id="pickZip" accept=".zip" hidden>
+    <input type="file" id="pickFiles" accept=".png,.pxp,.ogg" multiple hidden>
+    <span class="sep"></span>
+    <button id="undo" title="Undo (Ctrl+Z)" disabled>Undo</button>
+    <button id="redo" title="Redo (Ctrl+Y)" disabled>Redo</button>
+    <button id="reload" title="Throw away unsaved changes and read this face from disk again">Reload</button>
+    <span class="sep"></span>
+    <button id="resetPanels" title="Drag a panel by its title to move it, a gutter to size a side. This puts them all back.">Reset panels</button>
+    <span class="muted tiny" id="studioSaid"></span>
+    <span id="dirty"></span>
+    <button id="save" class="primary" title="Ctrl+S. The previous version is kept beside it.">Save</button>
   </div>
+  <div id="welcome">
+    <h3>No faces in this folder yet</h3>
+    <p id="welcomeWhere"></p>
+    <button id="welcomeOpen">Import a shared face (.zip)…</button>
+    <button id="welcomeNew" class="primary">Start a new face here</button>
+  </div>
+  <div id="studioGrid">
+    <div class="col" id="left"></div>
+    <div class="gutter" id="gutL"><button type="button"></button></div>
+    <div class="col" id="stage">
+      <div id="railWrap" title="The rail lights this pose asks for">
+        <div class="rail" id="railL"></div>
+        <canvas id="screen" width="960" height="720"></canvas>
+        <div class="rail" id="railR"></div>
+      </div>
+      <div class="strip">
+        <div class="row">
+          <label><span>Zoom</span><select id="zoom"><option>1</option><option>2</option><option selected>3</option><option>4</option></select></label>
+          <label><input type="checkbox" id="ovSockets" checked>sockets</label>
+          <label><input type="checkbox" id="ovAnchors" checked>anchors</label>
+          <label><input type="checkbox" id="ovGrid">centre lines</label>
+          <label><input type="checkbox" id="ovSpots" checked>touch spots</label>
+          <span class="spacer"></span>
+          <button id="sheetBtn">All emotions</button>
+          <button id="exportBtn" title="Saves every pose as a PNG, and one big sheet of them all, into an export folder beside the face">Export pictures</button>
+        </div>
+        <div class="muted tiny">Drag an anchor (eyes, brows, mouth, the shown decorators) to move it. Arrow keys nudge the selected one, Shift for 5 px.</div>
+      </div>
+      <section>
+        <h2>Layers</h2>
+        <div class="row tiny" id="inspector"></div>
+      </section>
+      <section>
+        <h2>Import layers</h2>
+        <div class="muted tiny">From a PixlPunkt .pxp in Psycheion's faces (Upload files… brings one in).</div>
+        <div class="row"><select id="pxpSel"></select><button id="pxpLoad">Read layers</button><button id="pxpImport" class="primary">Import checked</button></div>
+        <div class="row tiny">
+          <label><input type="checkbox" id="optSwap" checked>lids drawn per pose: keep them where drawn, blink with 'closed'</label>
+          <label><input type="checkbox" id="optMask" checked>mask the iris by the eye white</label>
+          <label><input type="checkbox" id="optSlide" checked>(sliding lids) slide upper lids to the socket bottom</label>
+          <label><input type="checkbox" id="optFill" checked>fill skin above lids (from the base)</label>
+          <label><input type="checkbox" id="optEyePlace" checked>place the eye and size the socket from the art</label>
+          <label><input type="checkbox" id="optMouthAnchor" checked>set the mouth anchor from the art when there are no mouths yet</label>
+        </div>
+        <div class="muted tiny">Sides come from where the art sits on the canvas, not the layer name: screen right is +x (the viewer's right).</div>
+        <div id="pxpTable"></div>
+        <div id="log"></div>
+      </section>
+    </div>
+    <div class="gutter" id="gutR"><button type="button"></button></div>
+    <div class="col" id="right"></div>
+  </div>
+  <div class="sheetBack" id="sheet"><div class="sheet" id="sheetBody"></div></div>
+  <div id="picker"><input id="pickerFilter" type="text" placeholder="Type to filter. Enter picks the first."><div id="pickerGrid"></div></div>
 </section>

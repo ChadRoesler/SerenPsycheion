@@ -2,11 +2,11 @@
 
 The console and face workshop for a [SerenSoma](https://github.com/ChadRoesler/SerenSoma) body: watch it and
 feel how it's touched, make its faces in **Face Studio**, and run the faces' **build-ups** (a touch kept up
-tips the face over). It needs no robot to make faces: install it, open `/studio`, draw, share.
+tips the face over). It needs no robot to make faces: install it, open the viewer's **Faces** tab, draw, share.
 
 ```
 pip install seren-psycheion
-seren-psycheion                          # http://127.0.0.1:7429/viewer, and Face Studio at /studio
+seren-psycheion                          # http://127.0.0.1:7429/viewer; Face Studio is its Faces tab (/viewer#faces)
 seren-psycheion face build my_face       # the face builder, no server (init | preview | build)
 seren-psycheion --describe               # one line of JSON, for installers
 ```
@@ -47,7 +47,7 @@ hand did, so a wider bind with no `server.bearer_token_env` refuses to start
 
 | | |
 |---|---|
-| `GET /viewer` | The console. |
+| `GET /viewer` | The console, and Face Studio in its Faces tab. A tab can be linked to: `/viewer#faces`. |
 | `GET /api/soma` | The robot's status and the voice server's status and settings, each with why it didn't answer if it didn't. |
 | `POST /api/soma/robot/settings` | `dimmer`, `volume` (0 to 100), `brightness` (5 to 100); saved on the robot. |
 | `POST /api/soma/voice/settings` | Any part of the voice server's settings (night, work hours, the dead-air timer). |
@@ -55,11 +55,11 @@ hand did, so a wider bind with no `server.bearer_token_env` refuses to start
 | `GET /api/buildups` | The face's build-ups: each one's meter, when it last fired, why the last one that filled didn't. |
 | `POST /api/buildups` | `{"enabled": true or false}`, until Psycheion restarts (`buildups.enabled` in the config is where it starts). |
 | `POST /api/buildups/<name>/test` | Fire one by hand, whatever the hours. Not with a call open. |
-| `GET /studio` | Face Studio. Its data is under `/api/studio/` (faces, saves, uploads, `.zip` export and import, sending to the robot). |
+| `GET /studio` | Where Face Studio used to be: sends you on to the Faces tab. Its data is under `/api/studio/` (faces, saves, uploads, `.zip` export and import, sending to the robot). |
 
-Everything under `/api` needs the bearer when one is set. Face Studio's page and its images (`/studio/...`) are
-public to the bearer check, because an `<img>` can't send a header; the images check a session cookie the page
-gets with the bearer instead (HttpOnly, SameSite=Strict, never the bearer itself).
+Everything under `/api` needs the bearer when one is set. Face Studio's stylesheet, script and images
+(`/studio/...`) are public to the bearer check, because a `<link>` or an `<img>` can't send a header; the images
+check a session cookie the page gets with the bearer instead (HttpOnly, SameSite=Strict, never the bearer itself).
 
 **Build-ups** are the face's own (`buildups:` in its `face.yaml`); the robot carries them and Psycheion runs them
 from the voice server's touch feed. Never in the house's work hours (the voice server's settings), never with a

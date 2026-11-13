@@ -11,6 +11,17 @@ const FEED_KEEP = 200, FEED_PAGE = 25;
 let FEED_SHOWN = FEED_PAGE;
 
 const $ = id => document.getElementById(id);
+
+// A tab can be linked to (/viewer#faces, which is where /studio lands), and can ask to be told when
+// it's shown: TAB_SHOWN.<tab id> = fn. Face Studio starts that way, the first time it's looked at.
+const TAB_SHOWN = {};
+const TAB_WANTED = location.hash.slice(1);         // read now: showing the first tab rewrites the hash
+const shellShowTab = showTab;
+showTab = id => {
+  shellShowTab(id);
+  history.replaceState(null, "", "#" + id);
+  if (TAB_SHOWN[id]) TAB_SHOWN[id]();
+};
 function say(id, text, bad) { const m = $(id); m.textContent = text || ""; m.className = "msg" + (text ? (bad ? " bad" : " ok") : ""); }
 function why(e) { return /^401/.test(e.message) ? "Psycheion wants its token (🔑 Token, top right)." : e.message; }
 function pill(id, text, ok) { const p = $(id); p.textContent = text; p.style.color = ok ? "var(--ok)" : "var(--danger)"; }
@@ -171,6 +182,7 @@ async function testBuildup(name) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  if (document.querySelector(`.tabbar .tab[data-tab="${CSS.escape(TAB_WANTED)}"]`)) showTab(TAB_WANTED);
   $("buOn").onchange = async e => {
     try { await api("/api/buildups", { method: "POST", body: JSON.stringify({ enabled: e.target.checked }) });
           say("buMsg", e.target.checked ? "On." : "Off until you switch them back (or Psycheion restarts)."); }

@@ -12,7 +12,8 @@ nervous system. Psycheion is where you watch it and shape it.
 - **What it senses:** a plain statement of what the body's microphone,
   camera and touch do, what's kept and where it goes, for you and for anyone
   you hand a body to.
-- **Faces:** Face Studio, moving in from SerenSoma.
+- **Faces:** Face Studio. Draw and pose a face, give it sounds and
+  build-ups, send it to the robot, share it as one `.zip`.
 
 It reaches the body only through [SerenSinew](https://github.com/ChadRoesler/SerenSinew)'s
 `seren_sinew.soma`, and it holds the body's tokens itself: your browser only

@@ -82,8 +82,9 @@ def create_app(config: Optional[PsycheionConfig] = None, *,
 
     # Open on loopback with no token, like the rest of the family; enforce_server
     # refuses a wider bind without one before this ever runs.
-    # /studio/... is the Face Studio page and its images: an <img> can't send a bearer, so they
-    # check a session cookie the page gets with one (studio.py). The data is under /api/studio/.
+    # /studio/... is Face Studio's stylesheet, script and images (the Faces tab asks for them): an
+    # <img> can't send a bearer, so the images check a session cookie the page gets with one
+    # (studio.py). The data is under /api/studio/.
     app.add_middleware(bearer_auth_middleware(cfg.server.resolve_bearer(), public_paths=DEFAULT_PUBLIC_PATHS | {"/studio"}))
     app.include_router(studio_router(cfg))
     app.add_middleware(RequestLoggingMiddleware, service_name=NAME, env_prefix="SEREN_PSYCHEION")

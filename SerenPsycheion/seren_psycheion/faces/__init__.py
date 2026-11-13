@@ -2,5 +2,5 @@
 
     seren-psycheion face init|preview|build ...
 
-Face Studio (the page at /studio) drives the same builder.
+Face Studio (the viewer's Faces tab) drives the same builder.
 """
