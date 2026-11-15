@@ -29,6 +29,7 @@ class Robot:
         self.got = None
         self.calls = []
         self.poses = []
+        self.frames = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -42,9 +43,11 @@ class Robot:
         if path == "/api/reboot":
             self.up = 500
             return httpx.Response(200, json={"ok": True})
-        if path in ("/api/emotion", "/api/twitch"):
+        if path in ("/api/emotion", "/api/twitch", "/api/leds"):
             if path == "/api/emotion":
                 self.poses.append(json.loads(request.content))
+            if path == "/api/leds":
+                self.frames.append(json.loads(request.content)["frame"])
             return httpx.Response(200, json={"ok": True})
         return httpx.Response(404, json={"error": "no"})
 
@@ -214,7 +217,8 @@ def test_send_builds_uploads_reboots_and_comes_back_installed(tmp_path):
         assert c.post("/api/studio/bot/send", params={"dir": "mine"}, headers=AUTH).status_code == 200
         busy = c.post("/api/studio/bot/send", params={"dir": "mine"}, headers=AUTH)
         import time
-        for _ in range(100):
+        # up to a minute: the build converts 35 sprites, which is 10 s on a busy box, then the reboot wait
+        for _ in range(600):
             job = c.get("/api/studio/bot", headers=AUTH).json()["job"]
             if not job["running"]:
                 break
@@ -233,13 +237,39 @@ def test_try_sends_the_pose_being_worked_on(tmp_path):
     assert r.status_code == 200 and robot.calls == ["/api/emotion", "/api/twitch"]
 
 
+def test_the_rails_are_lit_led_by_led_and_kept_with_the_face(tmp_path):
+    """The LEDs count round the head in a U (0 to 5 back along its right, 6 to 11 forward along its
+    left); the front two of each rail (0, 1, 10, 11) are the robot's own and are never colored. A
+    pose's color goes on the other eight, except where lights.leds gives one its own. The face keeps
+    them through a save."""
+    _a_face(tmp_path)
+    robot = Robot()
+    lights = {"color": "#ff0000", "brightness": 100, "leds": {"2": "#00ff00", "9": "#0000ff"}}
+    with _client(tmp_path, robot) as c:
+        lit = c.post("/api/studio/bot/leds", headers=AUTH, content=json.dumps({"lights": lights}))
+        out = c.post("/api/studio/bot/leds", headers=AUTH, content=json.dumps({"lights": None}))
+        bad = c.post("/api/studio/bot/leds", headers=AUTH, content=json.dumps({"lights": {"color": "pink"}}))
+        doc = c.get("/api/studio/face", params={"dir": "mine"}, headers=AUTH).json()
+        doc["doc"]["emotions"] = {**(doc["doc"].get("emotions") or {}), "happy": {"lights": lights}}
+        saved = c.post("/api/studio/save", params={"dir": "mine", "since": doc["stamp"]}, headers=AUTH, content=json.dumps(doc["doc"]))
+        back = c.get("/api/studio/face", params={"dir": "mine"}, headers=AUTH).json()["doc"]["emotions"]["happy"]["lights"]
+    frame, dark = robot.frames
+    assert lit.status_code == 200 and len(frame) == 12
+    assert [frame[i] for i in (0, 1, 10, 11)] == [[0, 0, 0]] * 4
+    assert frame[2] == [0, 168, 0] and frame[9] == [0, 0, 168] and frame[3] == frame[5] == frame[6] == frame[8] == [168, 0, 0]
+    assert out.status_code == 200 and dark == [[0, 0, 0]] * 12
+    assert bad.status_code == 400 and len(robot.frames) == 2
+    assert saved.status_code == 200 and {str(k): v for k, v in back["leds"].items()} == lights["leds"]
+
+
 def test_a_tried_pose_is_held_until_its_let_go(tmp_path):
-    """The robot goes back to neutral on every connect, listen and hang up. A held try stands in for
-    neutral there (the firmware's rest), so it stays; trying neutral without hold lets it go."""
+    """A held try is locked on the robot (the firmware's "hold"): touches and the voice code's neutral
+    show nothing until neutral is sent with hold false. The key always goes: while a pose is held,
+    the robot refuses one that doesn't say."""
     robot = Robot()
     with _client(tmp_path, robot) as c:
         c.post("/api/studio/bot/try", headers=AUTH, content=json.dumps({"name": "smug", "hold": True}))
         c.post("/api/studio/bot/try", headers=AUTH, content=json.dumps({"name": "neutral"}))
     held, let_go = robot.poses
-    assert held["name"] == "smug" and held["rest"] is True
-    assert let_go["name"] == "neutral" and "rest" not in let_go
+    assert held["name"] == "smug" and held["hold"] is True and "rest" not in held
+    assert let_go["name"] == "neutral" and let_go["hold"] is False

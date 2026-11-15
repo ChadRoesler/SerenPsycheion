@@ -207,6 +207,53 @@ def lights_rgb(lights):
     return [round(v * 168 / 255 * brightness / 100) for v in rgb]
 
 
+# The twelve rail LEDs count round the head in a U: 0 at the front of the robot's right side, back to 5,
+# across to 6 at the back of its left side, forward to 11. The front two of each rail are the robot's own
+# (0 and 11 the microphone and reply, 1 and 10 the camera); a pose colors the rest. This is SerenSoma's
+# firmware/main/hal/rails.h (kMoodLeds), as of 13 Nov 2026; before that the robot's own were 0, 1, 6, 7.
+LED_COUNT = 12
+POSE_LEDS = (2, 3, 4, 5, 6, 7, 8, 9)
+
+
+def lights_frame(lights):
+    """A pose's rails LED by LED, as /api/leds wants them: twelve [r, g, b], each 0~168. The pose's
+    color on its eight LEDs, except where lights.leds ({number: color}) gives one its own; the robot's
+    own four are left dark (it holds them above anything sent). None or no lights: all out."""
+    frame = [[0, 0, 0] for _ in range(LED_COUNT)]
+    if not lights:
+        return frame
+    own = {int(k): v for k, v in (lights.get("leds") or {}).items()}
+    for i in POSE_LEDS:
+        frame[i] = lights_rgb({"color": own.get(i) or lights.get("color"), "brightness": lights.get("brightness", 40)})
+    return frame
+
+
+LAYERS = ("brows", "eyes", "mouth", "hair", "decorators")
+BROW_ALONE = ("brow:left", "brow:right")
+
+
+def layer_order(layers, brows_above, decorators):
+    """The face's layers above its base, bottom to top (face.layers; Face Studio's layerOrder is the
+    same sum, and face.json's "layers" is this list as it comes out). "brows", "eyes", "mouth", "hair"
+    and "decorators" are always all there: one a face leaves out goes back where it sits by default.
+    "dec:<name>" is one decorator given a place of its own; the rest are drawn together at
+    "decorators". "brow:left" and "brow:right" are one brow given its own place; "brows" is then the
+    place of whichever brow hasn't one. With no list, the order is the one the firmware has always
+    drawn, brows under the eyes or over them as the face says."""
+    usual = ["eyes", "brows", "mouth", "hair", "decorators"] if brows_above else list(LAYERS)
+    if not isinstance(layers, list):
+        return usual
+    out = []
+    for t in (str(x) for x in layers):
+        if t not in out and (t in LAYERS or t in BROW_ALONE or (t.startswith("dec:") and t[4:] in decorators)):
+            out.append(t)
+    for i, t in enumerate(usual):
+        if t not in out:
+            before = next((p for p in reversed(usual[:i]) if p in out), None)   # the nearest one under it by default
+            out.insert(out.index(before) + 1 if before else 0, t)
+    return out
+
+
 def half_up(x):
     """Round like JavaScript's Math.round, so the Studio and the build agree to the pixel."""
     import math
@@ -286,6 +333,15 @@ class Face:
         self.brow_shapes = dict(brows.get("shapes") or {})
 
         self.decorators = dict(parts.get("decorators") or {})
+        # What's drawn over what, above the base (Face Studio's Layers panel). A face that orders its
+        # layers says where its brows are by that, so the one part of the order every firmware knows
+        # (aboveEyes) can't disagree with the list. The list goes into face.json as "layers" only when
+        # the face has one, so a face without is built byte for byte as before; firmware that reads
+        # "layers" ignores aboveEyes, and firmware that doesn't draws its own order.
+        self.orders_layers = isinstance(face.get("layers"), list)
+        self.layers = layer_order(face.get("layers"), self.brows_above, self.decorators)
+        if self.orders_layers:
+            self.brows_above = self.layers.index("brows") > self.layers.index("eyes")
         self.emotions = self._resolve_emotions(doc.get("emotions") or {})
         self.touch = self._resolve_touch(doc.get("touch"))
         self.head = self._resolve_head(doc.get("head"))
@@ -377,7 +433,14 @@ class Face:
             return None
         out = {}
         for kind, spec in head.items():
-            if kind not in HEAD_TOUCHES:
+            if kind == "shake":
+                # not a touch: the motion sensor. The firmware shows this pose for its four seconds
+                # in place of one named "dizzy" (0.0.0-dev.1112.2142 on), so it takes no ms.
+                if (spec or {}).get("pose") in self.emotions:
+                    out[kind] = {"pose": spec["pose"]}
+                else:
+                    print(f"  warning: a shake wants pose '{(spec or {}).get('pose')}', which this face doesn't have; left out")
+            elif kind not in HEAD_TOUCHES:
                 print(f"  warning: head touch '{kind}' isn't one; left out")
             elif spec.get("pose") not in self.emotions:
                 print(f"  warning: head touch {kind} wants pose '{spec.get('pose')}', which this face doesn't have; left out")
@@ -760,12 +823,13 @@ class Compositor:
             l, r = f.brow_left, f.brow_right
         return (l or r, r or l, f.mirror and not l, f.mirror and not r)
 
-    def _render_brows(self, canvas, pose):
+    def _render_brows(self, canvas, pose, which=("left", "right")):
         f = self.face
         brow = sided_pair(pose.get("brow"))
         sides = pose.get("brow_shape_sides") or {}
         src_l, _, mir_l, _ = self.brow_srcs(sides.get("left", pose.get("brow_shape", "neutral")))
         _, src_r, _, mir_r = self.brow_srcs(sides.get("right", pose.get("brow_shape", "neutral")))
+        src_l, src_r = ("left" in which and src_l), ("right" in which and src_r)
         if src_l:
             self._paste_centre(canvas, self._load(src_l, mir_l), SCREEN_W / 2 + f.brow_left_pos[0],
                                SCREEN_H / 2 + f.brow_left_pos[1] + brow["left"][0], brow["left"][1])
@@ -786,28 +850,22 @@ class Compositor:
             b = self._load(base)
             canvas.alpha_composite(b, (int((SCREEN_W - b.width) / 2), int((SCREEN_H - b.height) / 2)))
 
-        if not f.brows_above:
-            self._render_brows(canvas, pose)
-        self._render_eye(canvas, pose, True, gaze)
-        self._render_eye(canvas, pose, False, gaze)
-        if f.brows_above:
-            self._render_brows(canvas, pose)
+        def mouth():
+            frames = f.mouth_shapes.get(pose.get("mouth")) or []
+            if frames:
+                idx = int(round(mouth_open * (len(frames) - 1)))
+                m = self._load(frames[max(0, min(idx, len(frames) - 1))])
+                self._paste_centre(canvas, m, SCREEN_W / 2 + f.mouth_pos[0], SCREEN_H / 2 + f.mouth_pos[1])
 
-        shape = pose.get("mouth")
-        frames = f.mouth_shapes.get(shape) or []
-        if frames:
-            idx = int(round(mouth_open * (len(frames) - 1)))
-            m = self._load(frames[max(0, min(idx, len(frames) - 1))])
-            self._paste_centre(canvas, m, SCREEN_W / 2 + f.mouth_pos[0], SCREEN_H / 2 + f.mouth_pos[1])
+        def hair():
+            overlay = pose["overlay"] if "overlay" in pose else f.overlay
+            if overlay:
+                o = self._load(overlay)
+                canvas.alpha_composite(o, (int((SCREEN_W - o.width) / 2), int((SCREEN_H - o.height) / 2)))
 
-        overlay = pose["overlay"] if "overlay" in pose else f.overlay
-        if overlay:
-            o = self._load(overlay)
-            canvas.alpha_composite(o, (int((SCREEN_W - o.width) / 2), int((SCREEN_H - o.height) / 2)))
-
-        for dec in pose.get("decorators") or ([pose["decorator"]] if pose.get("decorator") else []):
+        def decorator(dec):
             if dec not in f.decorators:
-                continue
+                return
             spec = f.decorators[dec]
             anchor = {"left_eye": f.left_pos, "right_eye": f.right_pos,
                       "mouth": f.mouth_pos}.get(spec.get("anchor", "face"), [0, 0])
@@ -815,6 +873,30 @@ class Compositor:
             self._paste_centre(canvas, self._load(spec["image"]),
                                SCREEN_W / 2 + anchor[0] + off[0],
                                SCREEN_H / 2 + anchor[1] + off[1])
+
+        # bottom to top, in the face's own order. A decorator with a place of its own is drawn there
+        # when the pose shows it; the pose's other decorators are drawn together at "decorators".
+        shown = pose.get("decorators") or ([pose["decorator"]] if pose.get("decorator") else [])
+        placed = {t[4:] for t in f.layers if t.startswith("dec:")}
+        together = [sd for sd in ("left", "right") if "brow:" + sd not in f.layers]   # no place of their own
+        for t in f.layers:
+            if t == "brows":
+                self._render_brows(canvas, pose, together)
+            elif t in BROW_ALONE:
+                self._render_brows(canvas, pose, (t[5:],))
+            elif t == "eyes":
+                self._render_eye(canvas, pose, True, gaze)
+                self._render_eye(canvas, pose, False, gaze)
+            elif t == "mouth":
+                mouth()
+            elif t == "hair":
+                hair()
+            elif t == "decorators":
+                for dec in shown:
+                    if dec not in placed:
+                        decorator(dec)
+            elif t[4:] in shown:
+                decorator(t[4:])
 
         return canvas
 
@@ -1001,6 +1083,8 @@ def cmd_build(args):
         manifest = {
             **({"touch": face.touch} if face.touch is not None else {}),
             **({"head": face.head} if face.head is not None else {}),
+            # what's drawn over what, bottom to top, when the face says (see layer_order)
+            **({"layers": face.layers} if face.orders_layers else {}),
             # the robot finds them by file (snd_<name>.ogg); listed here so a reader of face.json knows
             **({"sounds": sound_names} if sound_names else {}),
             # carried by the robot, run by SerenPsycheion (it reads them off /api/touch-spots)

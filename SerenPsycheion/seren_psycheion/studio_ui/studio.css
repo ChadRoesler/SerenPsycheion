@@ -136,6 +136,34 @@ body.movingPanel, body.movingPanel * { cursor:grabbing !important; user-select:n
 #faces .headZone.on { background:rgba(255, 160, 60, .65); }
 #checks div { margin:2px 0; }
 
+/* ── the layers: the top of the list is drawn on top; a row is dragged to where it sits ── */
+#faces .layerList { display:flex; flex-direction:column; gap:2px; margin:2px 0 6px; }
+#faces .layerRow { display:flex; align-items:center; flex-wrap:wrap; gap:4px 6px; padding:2px 6px; min-height:26px; border:1px solid var(--border); border-radius:7px;
+                   background:var(--bg-2); cursor:grab; font-size:12px; }
+#faces .layerRow.fixed { cursor:default; border-style:dashed; background:transparent; }
+#faces .layerRow .grip { width:12px; color:var(--faint); flex:none; text-align:center; }
+#faces .layerRow .noTick { width:13px; flex:none; }
+#faces .layerRow .name { font-weight:600; }
+/* what's inside the eyes goes on a line of its own under the row, so the arrows stay where every row has them */
+#faces .layerRow .inside { display:flex; gap:2px 8px; flex-wrap:wrap; order:9; flex-basis:100%; padding-left:37px; }
+#faces .layerRow .inside label { margin:0; }
+#faces .layerRow .thumb { width:20px; height:20px; }
+#faces .layerRow .spacer { flex:1; }
+#faces .layerRow.dragging { opacity:.4; }
+#faces .layerRow.above { box-shadow:0 -2px 0 var(--accent); }
+#faces .layerRow.below { box-shadow:0 2px 0 var(--accent); }
+
+/* ── the rails, LED by LED: looking down on the head, the screen at the top ── */
+#faces .ledMap { display:flex; justify-content:center; align-items:stretch; gap:6px; margin:6px 0; }
+#faces .ledCol { display:flex; flex-direction:column; gap:4px; }
+#faces .ledHead { width:86px; display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:4px 0 34px;
+                  border:1px solid var(--border); border-radius:10px 10px 22px 22px; background:var(--bg-2); }
+#faces .ledMap .led { width:26px; height:22px; padding:0; font-size:10px; line-height:1; border-radius:5px; color:#000;
+                      text-shadow:0 0 2px rgba(255, 255, 255, .7); }
+#faces .ledMap .led.set { border-color:var(--text); }
+#faces .ledMap .led.on { outline:2px solid var(--accent); outline-offset:1px; }
+#faces .ledMap .led.own { background:transparent; color:var(--faint); border-style:dashed; text-shadow:none; opacity:1; }
+
 /* ── every pose at once ── */
 #faces .sheetBack { position:fixed; inset:0; z-index:60; background:rgba(0, 0, 0, .75); display:none; align-items:flex-start; justify-content:center;
                     overflow:auto; padding:30px; }

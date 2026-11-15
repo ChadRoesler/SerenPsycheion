@@ -179,7 +179,17 @@ class Buildups:
         self.last_fired[name] = time.time()
         log.info("build-up %s: tipping into %s", name, b.pose)
         try:
-            await self._quietly(self.robot.emotion(b.pose, rest=True))
+            try:
+                await self.robot.emotion(b.pose, rest=True)
+            except Exception as e:  # noqa: BLE001 - see _quietly; one answer is told apart
+                # 409: a pose is held on the robot (Face Studio's Try this pose). Nothing would show,
+                # so the flash and the sound aren't played into it either.
+                if getattr(getattr(e, "response", None), "status_code", None) == 409:
+                    self.last_skipped[name] = "a pose is held on the robot (Face Studio's Let go frees it)"
+                    log.info("build-up %s filled, not fired: a pose is held on the robot", name)
+                    self.firing = None
+                    return
+                log.warning("build-up step: %s", e)
             if b.flash:
                 for _ in range(2):
                     await self._quietly(self.robot.leds([tuple(b.flash)] * 12))
@@ -193,8 +203,9 @@ class Buildups:
                 await self._quietly(self.robot.emotion(b.after))     # and the resting pose goes with it
                 await self.sleep((b.afterMs or 0) / 1000)
         finally:
-            await self._quietly(self.robot.emotion("neutral"))          # clears the resting pose either way
-            self.firing = None
+            if self.firing == name:                                     # not when it stopped at a held pose
+                await self._quietly(self.robot.emotion("neutral"))      # clears the resting pose either way
+                self.firing = None
 
     async def _quietly(self, call) -> None:
         try:

@@ -531,17 +531,35 @@ def studio_router(cfg) -> APIRouter:
 
     @r.post("/api/studio/bot/try")
     async def bot_try(request: Request):
-        """Show a pose on the robot as the page has it. hold: it stands in for neutral there, so the
-        robot's own return to neutral (on every connect, listen and hang up) doesn't take it away;
-        the next try without hold lets it go."""
+        """Show a pose on the robot as the page has it. hold: true locks it there (the firmware's
+        "hold", 0.0.0-dev.1112.1653 on): touches, the voice code's return to neutral and anything
+        else posting a pose show nothing until it's let go, which is {"name": "neutral"} with hold
+        false. The key is always sent: while a pose is held, the robot answers 409 to a pose that
+        doesn't say. Older firmware ignores it, and the pose is then only shown, not held."""
         b = json.loads(await request.body() or b"{}")
         try:
             lit = facetool.lights_rgb(b.get("lights")) or [0, 0, 0]
-            await robot(request).emotion(b["name"], rest=bool(b.get("hold")), lights=lit, lightsPulse=facetool.lights_pulse(b.get("lights")),
+            await robot(request).emotion(b["name"], hold=bool(b.get("hold")), lights=lit, lightsPulse=facetool.lights_pulse(b.get("lights")),
                                          look=facetool.sided_pair(b.get("look")), brow=facetool.sided_pair(b.get("brow")),
                                          mouthCycle=int(b.get("mouthCycle") or 0), roll=int(b.get("roll") or 0))
             await robot(request).twitch(b.get("twitch"))
         except (httpx.HTTPError, ValueError, KeyError) as e:
+            raise HTTPException(502, robot_says(e, cfg.soma.robot.url))
+        return {"ok": True}
+
+    @r.post("/api/studio/bot/leds")
+    async def bot_leds(request: Request):
+        """{"lights": a pose's lights, or null}: light the rails on the robot LED by LED, as the page
+        has them (lights.leds), or put the pose's eight out. The firmware shows a pose in one color;
+        until it learns each LED's, this is how a drawn rail is seen."""
+        b = json.loads(await request.body() or b"{}")
+        try:
+            frame = [tuple(c) for c in facetool.lights_frame(b.get("lights"))]
+        except (ValueError, TypeError, AttributeError) as e:
+            raise HTTPException(400, f"those lights aren't ones to send: {e}")
+        try:
+            await robot(request).leds(frame)
+        except (httpx.HTTPError, ValueError) as e:
             raise HTTPException(502, robot_says(e, cfg.soma.robot.url))
         return {"ok": True}
 

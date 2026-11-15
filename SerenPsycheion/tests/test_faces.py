@@ -94,6 +94,82 @@ buildups:
     assert "isn't Ogg Opus" in said and "suprised" in said and "tickle" in said
 
 
+def test_the_head_map_takes_a_shake_beside_the_touches(tmp_path, capsys):
+    """head: says what each touch on top of the head shows, and (firmware 0.0.0-dev.1112.2142 on) the
+    pose a shake shows in place of one named dizzy. A shake lasts the firmware's four seconds: no ms."""
+    src = _starter(tmp_path)
+    with (src / "face.yaml").open("a", encoding="utf-8") as f:
+        f.write('''
+head:
+  poke_back: {pose: angry, ms: 1500}
+  shake: {pose: surprised, ms: 9000}
+  wobble: {pose: happy}
+''')
+    manifest = _build(src, tmp_path / "out")
+    said = capsys.readouterr().out
+    assert manifest["head"] == {"poke_back": {"pose": "angry", "ms": 1500}, "shake": {"pose": "surprised"}}
+    assert "wobble" in said
+
+    (src / "face.yaml").write_text((src / "face.yaml").read_text(encoding="utf-8").replace("pose: surprised, ms: 9000", "pose: nope"),
+                                   encoding="utf-8")
+    assert "shake" not in _build(src, tmp_path / "out2")["head"] and "nope" in capsys.readouterr().out
+
+
+def test_a_face_orders_its_own_layers():
+    """face.layers is what's drawn over what, bottom to top. The five it always has stay all there (one
+    left out goes back to its usual place), a decorator can be given a place of its own, and with no
+    list it's the order the firmware has always drawn."""
+    decs = {"kiss": {}, "blush": {}}
+    assert fb.layer_order(None, False, decs) == ["brows", "eyes", "mouth", "hair", "decorators"]
+    assert fb.layer_order(None, True, decs) == ["eyes", "brows", "mouth", "hair", "decorators"]
+    # a brow over the hair, one decorator behind it; a decorator the face doesn't have is dropped
+    assert fb.layer_order(["eyes", "mouth", "dec:blush", "hair", "brows", "dec:gone", "decorators"], False, decs) == \
+        ["eyes", "mouth", "dec:blush", "hair", "brows", "decorators"]
+    # only some named: the rest go back in after whatever is usually under them
+    assert fb.layer_order(["hair", "eyes"], False, decs) == ["brows", "hair", "decorators", "eyes", "mouth"]
+    assert fb.layer_order(["mouth", "mouth", 7], False, decs) == ["brows", "eyes", "mouth", "hair", "decorators"]
+    # one brow with a place of its own (over the hair); "brows" stays, as the other brow's place
+    assert fb.layer_order(["brows", "eyes", "mouth", "hair", "brow:left", "decorators"], False, decs) == \
+        ["brows", "eyes", "mouth", "hair", "brow:left", "decorators"]
+
+
+def test_the_layers_decide_what_a_preview_draws_over_what(tmp_path):
+    """A decorator behind the hair is hidden by it; the same one left with the others is drawn over it.
+    And a face that orders its layers says where its brows are by the list, whatever the old key says."""
+    src = _starter(tmp_path)
+    Image.new("RGBA", (320, 240), (10, 200, 10, 255)).save(src / "hair.png")      # hair over everything
+    Image.new("RGBA", (40, 40), (250, 0, 250, 255)).save(src / "spark.png")
+    import yaml
+    doc = yaml.safe_load((src / "face.yaml").read_text(encoding="utf-8"))
+    doc["face"]["overlay"] = "hair.png"
+    doc["parts"].setdefault("decorators", {})
+    doc["parts"]["decorators"] = {**(doc["parts"].get("decorators") or {}), "spark": {"image": "spark.png", "anchor": "face", "offset": [0, 0]}}
+    doc["emotions"] = {**(doc.get("emotions") or {}), "happy": {"decorator": "spark"}}
+
+    def middle(layers):
+        d = dict(doc, face=dict(doc["face"], **({"layers": layers} if layers else {})))
+        (src / "face.yaml").write_text(yaml.safe_dump(d), encoding="utf-8")
+        face = fb.load_face(str(src))
+        return face, fb.Compositor(face).render("happy").getpixel((160, 120))[:3]
+
+    _, usual = middle(None)
+    plain = _build(src, tmp_path / "plain")
+    face, behind = middle(["eyes", "brows", "mouth", "dec:spark", "hair", "decorators"])
+    ordered = _build(src, tmp_path / "ordered")
+    assert usual == (250, 0, 250) and behind == (10, 200, 10)
+    assert face.brows_above is True
+    # face.json says the order only when the face has one; the brows' old key agrees with the list
+    assert "layers" not in plain and plain["brows"]["aboveEyes"] is False
+    assert ordered["layers"] == ["eyes", "brows", "mouth", "dec:spark", "hair", "decorators"] and ordered["brows"]["aboveEyes"] is True
+
+    # one brow over the hair, the other left under it: where the left brow sits shows through, the right doesn't
+    face, _ = middle(["brows", "eyes", "mouth", "hair", "brow:left", "decorators"])
+    shot = fb.Compositor(face).render("neutral")
+    left = shot.getpixel((160 + face.brow_left_pos[0], 120 + face.brow_left_pos[1]))[:3]
+    right = shot.getpixel((160 + face.brow_right_pos[0], 120 + face.brow_right_pos[1]))[:3]
+    assert left != (10, 200, 10) and right == (10, 200, 10)
+
+
 def test_a_mistake_is_an_error_that_says_what_to_fix(tmp_path):
     with pytest.raises(fb.FaceError):
         fb.cmd_build(NS(source=str(tmp_path / "nowhere"), out=str(tmp_path / "out"), prefix="f", dry_run=False))

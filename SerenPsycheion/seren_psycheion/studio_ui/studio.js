@@ -104,10 +104,39 @@ function resolve() {
     decorators: p.decorators || {},
   };
   const s = size(sideOf(F.sclera, "right") || sideOf(F.sclera, "left")), i = size(sideOf(F.iris, "right") || sideOf(F.iris, "left"));
+  // what's drawn over what, bottom to top; a face that orders its layers says where its brows are by that
+  F.layers = layerOrder(f.layers, F.browsAbove, F.decorators);
+  if (Array.isArray(f.layers)) F.browsAbove = F.layers.indexOf("brows") > F.layers.indexOf("eyes");
   F.fit = { left: irisFit(F, "left"), right: irisFit(F, "right") };
   F.travel = F.fit.right.travel;
   F.emotions = emotions(F);
   return F;
+}
+// The face's layers above its base, bottom to top (face.layers; face.py's layer_order is the same sum).
+// "brows", "eyes", "mouth", "hair" and "decorators" are always all there: one a face leaves out goes
+// back where it sits by default. "dec:<name>" is one decorator given a place of its own; the rest are
+// drawn together at "decorators". With no list, the order is the one the firmware has always drawn,
+// brows under the eyes or over them as the face says.
+// "brow:left" and "brow:right" are one brow given a place of its own (one over the hair, the other
+// under): "brows" is then the place of whichever brow hasn't one. This is also what face.json's
+// "layers" says, agreed with the firmware's side on 13 Nov 2026.
+const LAYER_KINDS = ["brows", "eyes", "mouth", "hair", "decorators"], BROW_ALONE = ["brow:left", "brow:right"];
+const LAYER_NAMES = { brows: "brows", eyes: "eyes", mouth: "mouth", hair: "hair (over)", decorators: "decorators",
+                      "brow:left": "left brow", "brow:right": "right brow" };
+function layerOrder(layers, browsAbove, decorators) {
+  const usual = browsAbove ? ["eyes", "brows", "mouth", "hair", "decorators"] : LAYER_KINDS;
+  if (!Array.isArray(layers)) return [...usual];
+  const out = [];
+  for (const t of layers.map(String)) {
+    if (out.includes(t)) continue;
+    if (LAYER_KINDS.includes(t) || BROW_ALONE.includes(t) || (t.startsWith("dec:") && decorators[t.slice(4)])) out.push(t);
+  }
+  usual.forEach((t, i) => {
+    if (out.includes(t)) return;
+    const before = usual.slice(0, i).reverse().find(p => out.includes(p));   // the nearest one that's under it by default
+    out.splice(before ? out.indexOf(before) + 1 : 0, 0, t);
+  });
+  return out;
 }
 function pick(want, avail) {           // face.py Face._pick: never reference a missing part
   const keys = Object.keys(avail);
@@ -359,9 +388,9 @@ function render(ctx, F, st) {
   RECTS = [];
   ctx.fillStyle = F.background; ctx.fillRect(0, 0, SW, SH);
   const b = SHOW.base && sprite(st.pose.base || F.base); if (b) ctx.drawImage(b, centred(SW, b.width), centred(SH, b.height));
-  const brows = () => {
+  const brows = (sides = SIDES) => {
     if (!SHOW.brows) return;
-    for (const side of SIDES) {
+    for (const side of sides) {
       if (!SHOW[side]) continue;
       const brow = pairOf(st.pose.brow, side);
       const img = browSprite(F, st.pose.browS ? st.pose.browS[side] : "neutral", side);
@@ -372,33 +401,43 @@ function render(ctx, F, st) {
       RECTS.push({ kind: "brows", side, x, y, w: img.width, h: img.height });
     }
   };
-  // brows sit under the eyes in the firmware today (a heavy lid overlaps them); a rig with
-  // brows above the eyes keeps them out of every blink
-  if (!F.browsAbove) brows();
-  const sockets = [eye(ctx, F, st, true), eye(ctx, F, st, false)];
-  if (F.browsAbove) brows();
-  const frames = F.shapes[st.pose.mouth] || [];
-  if (frames.length && SHOW.mouth) {
+  const sockets = [];
+  const eyes = () => { sockets.push(eye(ctx, F, st, true), eye(ctx, F, st, false)); };
+  const mouth = () => {
+    const frames = F.shapes[st.pose.mouth] || [];
+    if (!frames.length || !SHOW.mouth) return;
     const idx = Math.trunc((clamp(st.mouthWeight, 0, 100) * (frames.length - 1) + 50) / 100);
     const m = sprite(frames[clamp(idx, 0, frames.length - 1)]);
-    if (m) {
-      const mx = F.mpos[0] + mapRange(st.mouthPos[0], -100, 100, -F.mtravel[0], F.mtravel[0]);
-      const my = F.mpos[1] + mapRange(st.mouthPos[1], -100, 100, -F.mtravel[1], F.mtravel[1]);
-      rotated(ctx, m, centred(SW, m.width) + mx + m.width / 2, centred(SH, m.height) + my + m.height / 2, st.mouthRot);
-      RECTS.push({ kind: "mouth", x: centred(SW, m.width) + mx, y: centred(SH, m.height) + my, w: m.width, h: m.height });
-    }
-  }
-  // the pose's own overlay when it names one ("" = none): the clown swaps hair as well as base
-  const ovName = st.pose.overlay !== undefined ? st.pose.overlay : F.overlay;
-  const ov = SHOW.hair && ovName && sprite(ovName);
-  if (ov) { ctx.drawImage(ov, centred(SW, ov.width), centred(SH, ov.height)); RECTS.push({ kind: "hair", x: centred(SW, ov.width), y: centred(SH, ov.height), w: ov.width, h: ov.height }); }
-  for (const dn of SHOW.decorator ? (st.pose.decs || []) : []) {
-    const spec = F.decorators[dn], d = spec && sprite(spec.image);
-    if (!d) continue;
+    if (!m) return;
+    const mx = F.mpos[0] + mapRange(st.mouthPos[0], -100, 100, -F.mtravel[0], F.mtravel[0]);
+    const my = F.mpos[1] + mapRange(st.mouthPos[1], -100, 100, -F.mtravel[1], F.mtravel[1]);
+    rotated(ctx, m, centred(SW, m.width) + mx + m.width / 2, centred(SH, m.height) + my + m.height / 2, st.mouthRot);
+    RECTS.push({ kind: "mouth", x: centred(SW, m.width) + mx, y: centred(SH, m.height) + my, w: m.width, h: m.height });
+  };
+  const hair = () => {
+    // the pose's own overlay when it names one ("" = none): the clown swaps hair as well as base
+    const ovName = st.pose.overlay !== undefined ? st.pose.overlay : F.overlay;
+    const ov = SHOW.hair && ovName && sprite(ovName);
+    if (ov) { ctx.drawImage(ov, centred(SW, ov.width), centred(SH, ov.height)); RECTS.push({ kind: "hair", x: centred(SW, ov.width), y: centred(SH, ov.height), w: ov.width, h: ov.height }); }
+  };
+  const decorator = dn => {
+    const spec = F.decorators[dn], d = SHOW.decorator && spec && sprite(spec.image);
+    if (!d) return;
     const a = decAnchor(F, spec), off = spec.offset || [0, 0];
     const x = centred(SW, d.width) + a[0] + off[0], y = centred(SH, d.height) + a[1] + off[1];
     rotated(ctx, d, x + d.width / 2, y + d.height / 2, spec.animate === "pulse" ? st.decRot : 0);
     RECTS.push({ kind: "decorator", x, y, w: d.width, h: d.height });
+  };
+  // Bottom to top, in the face's own order (F.layers). The eyes are one layer: white, iris, lids, the
+  // iris masked inside its socket. A decorator the face has placed on its own is drawn at its place;
+  // the rest of the pose's decorators are drawn together where "decorators" sits.
+  const shown = st.pose.decs || [], placed = new Set(F.layers.filter(t => t.startsWith("dec:")).map(t => t.slice(4)));
+  const together = SIDES.filter(sd => !F.layers.includes("brow:" + sd));   // the brows without a place of their own
+  for (const t of F.layers) {
+    if (t === "brows") brows(together); else if (t.startsWith("brow:")) brows([t.slice(5)]);
+    else if (t === "eyes") eyes(); else if (t === "mouth") mouth(); else if (t === "hair") hair();
+    else if (t === "decorators") { for (const dn of shown) if (!placed.has(dn)) decorator(dn); }
+    else if (shown.includes(t.slice(4))) decorator(t.slice(4));
   }
   return sockets;
 }
@@ -587,7 +626,7 @@ window.addEventListener("keydown", ev => {
 const FOLDS = JSON.parse(localStorage.studioFolds || "{}");
 // first time here: the face and the pose are open, the rest is out of the way until it's wanted
 const FOLDED_AT_FIRST = new Set(["eyes", "mouth", "brows", "decorators", "touch spots", "head touches", "sounds", "build-ups",
-                                 "layers", "import layers", "motion preview", "robot", "checks"]);
+                                 "import layers", "motion preview", "robot", "checks"]);
 function isFolded(key, fallback) { return key in FOLDS ? FOLDS[key] : fallback; }
 function setFolded(key, on) { FOLDS[key] = on; localStorage.studioFolds = JSON.stringify(FOLDS); }
 const isControl = ev => ev.target.closest("button, input, select, label, summary");
@@ -855,7 +894,14 @@ function buildLeftPanels() {
     el("div", { class: "muted tiny", style: "margin-top:6px" }, "The rig:"),
     opt("Lids", F.lidMode, v => f.lid_mode = v, [["slide", "slide"], ["swap", "swap per pose; blink shows 'closed'"]]),
     opt("Iris masked by", F.irisMask, v => f.iris_mask = v, [["socket", "the socket"], ["sclera", "the eye white"]]),
-    el("label", {}, el("span", {}, "Brows"), el("input", { type: "checkbox", checked: F.browsAbove, onchange: ev => { f.brows_above_eyes = ev.target.checked; dirty(); } }),
+    el("label", {}, el("span", {}, "Brows"), el("input", { type: "checkbox", checked: F.browsAbove, onchange: ev => {
+        f.brows_above_eyes = ev.target.checked;
+        if (Array.isArray(f.layers)) {             // the face orders its layers: the brows move in that list too
+          const o = F.layers.filter(t => t !== "brows");
+          o.splice(o.indexOf("eyes") + (ev.target.checked ? 1 : 0), 0, "brows");
+          f.layers = o;
+        }
+        dirty(); buildAll(); } }),
       el("span", { class: "tiny" }, "above the eyes (never in a blink)")),
     el("label", {}, el("span", {}, "Drawn eye"), (() => { const s = el("select", { onchange: ev => { f.drawn_eye = ev.target.value; dirty(); } },
       el("option", { value: "right" }, "right (screen +x)"), el("option", { value: "left" }, "left (screen -x)")); s.value = F.drawn; return s; })())));
@@ -965,7 +1011,10 @@ function touchPanel(F) {
 // What a touch on top of the head shows. The voice server reads the kind of touch, about a second late.
 const HEAD_KINDS = [["stroke_front_to_back", "Stroke, front to back"], ["stroke_back_to_front", "Stroke, back to front"],
                     ["poke_front", "Poke, front"], ["poke_middle", "Poke, middle"], ["poke_back", "Poke, back"],
-                    ["finger_rest", "Finger resting"], ["hand", "Whole hand"], ["scritch", "Scritches"]];
+                    ["finger_rest", "Finger resting"], ["hand", "Whole hand"], ["scritch", "Scritches"],
+                    // not a touch, but it's the head being handled: the motion sensor. Left at (nothing), the
+                    // robot shows the pose named dizzy if the face draws one. It lasts four seconds, so no ms.
+                    ["shake", "Shaken"]];
 // Where each kind of touch lands, on the picture of the top of the head. Percent of its height, face end first.
 const HEAD_ZONES = { front: [25.5, 22], mid: [48.5, 23.5], back: [72.5, 22] };
 const HEAD_LABELS = { front: "Front", mid: "Middle", back: "Back" };
@@ -998,7 +1047,8 @@ function headPanel(F) {
       const s = el("select", { onchange: ev => {
         const v = ev.target.value;
         DOC.head = DOC.head || {};
-        if (v) DOC.head[kind] = { pose: v, ms: (DOC.head[kind] || {}).ms || 2000 }; else delete DOC.head[kind];
+        if (!v) delete DOC.head[kind];
+        else DOC.head[kind] = kind === "shake" ? { pose: v } : { pose: v, ms: (DOC.head[kind] || {}).ms || 2000 };
         if (!Object.keys(DOC.head).length) delete DOC.head;
         dirty(); buildLeft();
       } }, el("option", { value: "" }, "(nothing)"), ...poses.map(p => el("option", { value: p }, p)));
@@ -1150,13 +1200,13 @@ function robotPanel(pose) {
       act("Try this pose", "Show this pose on the robot with its twitch, rail color, look and brow moves as they are here, using the art it already has", async () => {
         const tw = pose.motion && pose.motion.twitch;
         botSay("Asking the robot…");
-        // held: the robot goes back to neutral on every connect, listen and hang up, and that would take it away
+        // held: locked on the robot, so a touch, a shake or the voice code's neutral doesn't take it away
         await api("/api/studio/bot/try", { method: "POST", body: JSON.stringify({ name: EMO, hold: true, twitch: tw || null, lights: pose.lights || null,
           look: pose.look || null, brow: pose.brow || null, mouthCycle: (pose.motion && pose.motion.mouth_cycle) || 0,
           roll: (pose.motion && pose.motion.roll) || 0 }) });
         botSay(`Holding ${EMO} on the robot until you let it go.`);
       }),
-      act("Let go", "Back to neutral: the robot stops holding the pose that was tried", async () => {
+      act("Let go", "Back to neutral: the robot stops holding the pose that was tried, and touches show again", async () => {
         await api("/api/studio/bot/try", { method: "POST", body: JSON.stringify({ name: "neutral" }) });
         botSay("Let go: the robot is back to neutral.");
       }),
@@ -1175,9 +1225,61 @@ function robotPanel(pose) {
   return sec;
 }
 
+// ----------------------------------------------------------------- the rails, LED by LED
+// The twelve LEDs count round the head in a U: 0 at the front of the robot's right side, back along it
+// to 5, across to 6 at the back of its left side and forward to 11. Drawn looking down on the head with
+// the screen at the top, like the head-touch picture, so 0 to 5 run down the right of the drawing.
+// The front two of each rail are the robot's own (0 and 11 the microphone and reply, 1 and 10 the
+// camera: SerenSoma's firmware/main/hal/rails.h, 13 Nov 2026); a pose colors the other eight, 2 to 9.
+const LED_RIGHT = [0, 1, 2, 3, 4, 5], LED_LEFT = [11, 10, 9, 8, 7, 6], LED_OWN = new Set([0, 1, 10, 11]);
+let LED_SEL = null;        // the LED being colored, kept across the panel's rebuilds
+// lights.leds is {"<number>": "#rrggbb"} for the LEDs that differ from the pose's color. It's saved with
+// the face; the robot shows a pose in its one color until the firmware learns the rest (Soma's side), so
+// for now "Light these" is how they're seen: Psycheion sends the frame itself.
+function ledMap(L, edit) {
+  const own = L.leds || {}, cells = {};
+  const colorOf = i => own[i] || L.color;
+  const cell = i => {
+    const mine = LED_OWN.has(i);
+    const c = el("button", { type: "button", class: "led" + (mine ? " own" : "") + (i === LED_SEL ? " on" : "") + (own[i] ? " set" : ""),
+      title: mine ? `LED ${i}: the robot's own (microphone, reply, camera)` : `LED ${i}${own[i] ? ": " + own[i] : ": the pose's color"}`,
+      onclick: () => { LED_SEL = LED_SEL === i ? null : i; buildRight(); } }, String(i));
+    if (mine) c.disabled = true; else c.style.background = colorOf(i);
+    return cells[i] = c;
+  };
+  const map = el("div", { class: "ledMap" },
+    el("div", { class: "ledCol" }, ...LED_LEFT.map(cell)),
+    el("div", { class: "ledHead" }, el("span", { class: "tiny" }, "screen"), el("span", { class: "muted tiny" }, "top of the head")),
+    el("div", { class: "ledCol" }, ...LED_RIGHT.map(cell)));
+  const send = lights => api("/api/studio/bot/leds", { method: "POST", body: JSON.stringify({ lights }) });
+  const out = [el("div", { class: "muted tiny" }, "Each LED its own color: click one. Looking down on the head, the screen at the top."), map];
+  if (LED_SEL != null && !LED_OWN.has(LED_SEL)) {
+    const i = LED_SEL;
+    const pick = el("input", { type: "color", value: colorOf(i).toLowerCase(), oninput: ev => {
+      cells[i].style.background = ev.target.value; cells[i].classList.add("set");
+      edit(l => { l.leds = { ...(l.leds || {}), [i]: ev.target.value }; });
+    } });
+    out.push(el("div", { class: "row" }, el("span", { class: "muted" }, `LED ${i}`), pick,
+      el("button", { class: "small", title: "Back to the pose's color", onclick: () => {
+        edit(l => { const rest = { ...(l.leds || {}) }; delete rest[i]; if (Object.keys(rest).length) l.leds = rest; else delete l.leds; });
+        buildRight();
+      } }, "same as the rest")));
+  }
+  out.push(el("div", { class: "row" },
+    el("button", { type: "button", class: "botAct small", title: "Light the rails on the robot as they are here, each LED its color",
+      onclick: async () => { await send(pose_lights()); botSay("The rails are lit as drawn."); } }, "Light these"),
+    el("button", { type: "button", class: "botAct small", title: "Put the pose's LEDs out on the robot",
+      onclick: async () => { await send(null); botSay("The rails are out."); } }, "Rails off"),
+    ...(Object.keys(own).length ? [el("button", { class: "small", title: "Every LED back to the pose's color", onclick: () => { edit(l => { delete l.leds; }); LED_SEL = null; buildRight(); } }, "all the same")] : [])),
+    el("div", { class: "muted tiny" }, "Saved with the face. The robot shows a pose in its one color for now, so Light these is how to see them."));
+  return el("div", { class: "sub" }, ...out);
+  // read when the button is pressed, not when it was built: the picker edits the pose after this ran
+  function pose_lights() { return (resolve().emotions[EMO] || {}).lights || null; }
+}
+
 let DEC_OPEN = false, DEC_SCROLL = 0;
 const NEW_EMOTE = "@new";   // the first line of the emotion list: not a pose, a way to make one
-function buildRight() { clearHome("right"); buildRightPanels(); settle("right"); }
+function buildRight() { clearHome("right"); buildRightPanels(); buildInspector(); settle("right"); }
 function buildRightPanels() {
   const R = $("#right");
   const F = resolve(), over = DOC.emotions || {};
@@ -1243,6 +1345,8 @@ function buildRightPanels() {
       if (!confirm(`Delete the pose ${EMO}? Ctrl+Z brings it back.`)) return;
       delete DOC.emotions[EMO]; EMO = "neutral"; dirty(); buildRight();
     } }, "delete")) : (over[EMO] ? el("button", { class: "small", onclick: () => { delete DOC.emotions[EMO]; dirty(); buildRight(); } }, "reset to default") : "");
+  // first, beside the face: an order is changed while looking at what it changes (buildInspector fills it)
+  R.append(el("section", {}, el("h2", {}, "Layers"), el("div", { class: "tiny", id: "inspector" })));
   R.append(el("section", {}, el("h2", {}, "Pose"),
     el("div", { class: "row emoRow" }, el("span", { class: "muted" }, "Emotion"), emoSel, poseButtons),
     ...(stock.some(n => over[n]) ? [el("div", { class: "muted tiny" }, "* = changed from the default pose")] : []),
@@ -1410,7 +1514,8 @@ function buildRightPanels() {
             buildRight();
           } }), "Pulse"),
           ...(pulsing ? [num("One breath (ms)", () => L.pulse, v => edit(l => l.pulse = clamp(Math.round(v) || 300, 300, 10000)), 100)] : []),
-          el("div", { class: "muted tiny" }, "Fades in on four LEDs a rail. The other two stay free for the mic, reply and camera lights. LEDs mix color differently from a screen, so Try this pose to judge it."));
+          el("div", { class: "muted tiny" }, "Fades in on four LEDs a rail. The other two stay free for the mic, reply and camera lights. LEDs mix color differently from a screen, so Try this pose to judge it."),
+          ledMap(L, edit));
       }
       return box;
     })()));
@@ -1478,6 +1583,8 @@ function refreshChecks() {
     if (dead.length) add("w", `mouth ${k}: frame ${dead.join(", ")} never shows in lip sync (it stops at weight 80)`);
     if (!fr.length) add("w", `mouth ${k} has no frames`);
   }
+  if (Array.isArray((DOC.face || {}).layers) && F.layers.join() !== layerOrder(null, F.browsAbove, F.decorators).join())
+    add("muted", "the layers are in this face's own order: it's drawn that way here and in previews, and sent with the face. A robot whose firmware doesn't read the list yet draws the usual order (it knows only brows over or under the eyes)");
   for (const [n, p] of Object.entries(F.emotions)) if (p.decoratorMissing) add("muted", `${n} asks for decorator "${p.decoratorMissing}" (not drawn; shows none)`);
   for (const name of used) if (name.replace(/\.png$/, "").length + 8 > HOME.max_asset_name) add("w", `${name}: long name; with a build prefix it may pass the ${HOME.max_asset_name}-character asset limit`);
   box.innerHTML = "";
@@ -1799,23 +1906,89 @@ async function baseImageData() {
 }
 
 // ----------------------------------------------------------------- folders, save
-function buildAll() { buildLeft(); buildRight(); buildInspector(); settle("stage"); }
+function buildAll() { buildLeft(); buildRight(); settle("stage"); }
+// The Layers panel is the face's order: the top of the list is drawn on top, and a row is dragged (or
+// stepped with its arrows) to where it should sit. The tick beside a row only hides it here.
+function setLayers(order) {
+  const f = DOC.face = DOC.face || {};
+  f.layers = order;
+  // the one piece of the order every firmware already knows: kept saying the same thing as the list
+  f.brows_above_eyes = order.indexOf("brows") > order.indexOf("eyes");
+  dirty(); buildAll();
+}
+let LAYER_DRAG = null;
 function buildInspector() {
   const box = $("#inspector"); if (!box) return;
   box.innerHTML = "";
   const tog = (obj, key, label) => el("label", {}, el("input", { type: "checkbox", checked: obj[key], onchange: ev => { obj[key] = ev.target.checked; } }), label);
-  box.append(...["base", "sclera", "iris", "lower", "upper", "brows", "mouth", "hair", "decorator"].map(k => tog(SHOW, k, k === "sclera" ? "whites" : k)),
-             el("span", { class: "muted" }, "|"), tog(SHOW, "left", "left side"), tog(SHOW, "right", "right side"),
-             el("span", { class: "muted" }, "|"), tog(INSPECT, "xray", "x-ray lids"), tog(INSPECT, "outlines", "outlines"),
-             tog(INSPECT, "sweep", "sweep gaze to the edges"));
   const F = DOC && resolve();
   if (F) {
-    // bottom to top, exactly as it is drawn now
-    const eyes = "eyes [white → iris" + (F.irisMask === "sclera" ? " (masked by the white)" : "") + " → lower lid → upper lid]";
-    const order = ["base", ...(F.browsAbove ? [] : ["brows"]), eyes, ...(F.browsAbove ? ["brows"] : []), "mouth",
-                   ...(F.overlay || Object.values(F.emotions).some(q => q.overlay) ? ["hair (over)"] : []), "decorators"];
-    box.append(el("div", { class: "muted", style: "flex-basis:100%" }, "Draw order, bottom to top: " + order.join("  →  ")));
+    const top = [...F.layers].reverse();           // as listed: the top layer first
+    const land = (moved, onto, after) => {         // `moved` dropped just above or below `onto`, in list terms
+      const rest = top.filter(t => t !== moved);
+      rest.splice(rest.indexOf(onto) + (after ? 1 : 0), 0, moved);
+      setLayers(rest.reverse());
+    };
+    const step = (t, by) => { const i = top.indexOf(t) + by; if (i >= 0 && i < top.length) land(t, top[i], by > 0); };
+    const SHOWN_BY = { brows: "brows", mouth: "mouth", hair: "hair", decorators: "decorator" };
+    const alone = SIDES.filter(sd => F.layers.includes("brow:" + sd));
+    const list = el("div", { class: "layerList" });
+    for (const t of top) {
+      const dn = t.startsWith("dec:") ? t.slice(4) : null, img = dn && F.decorators[dn].image;
+      const row = el("div", { class: "layerRow", draggable: "true", title: "Drag to where it should sit" },
+        el("span", { class: "grip" }, "⠿"),
+        SHOWN_BY[t] ? el("input", { type: "checkbox", checked: SHOW[SHOWN_BY[t]], title: "Show it here (the face is saved the same either way)",
+                                    onchange: ev => { SHOW[SHOWN_BY[t]] = ev.target.checked; } }) : el("span", { class: "noTick" }),
+        ...(img && FILES.includes(img) ? [el("img", { class: "thumb", alt: "", src: url(img) })] : []),
+        el("span", { class: "name" }, dn || LAYER_NAMES[t]),
+        ...(t === "eyes" ? [el("span", { class: "inside" }, tog(SHOW, "sclera", "whites"), tog(SHOW, "iris", "iris"), tog(SHOW, "lower", "lower lid"), tog(SHOW, "upper", "upper lid"))] : []),
+        ...(t === "decorators" && top.some(x => x.startsWith("dec:")) ? [el("span", { class: "muted", title: "The decorators that haven't been given a place of their own" }, "the rest")] : []),
+        ...(dn ? [el("span", { class: "muted" }, "decorator")] : []),
+        ...(t === "brows" && alone.length === 2 ? [el("span", { class: "muted", title: "Each brow has a place of its own, so nothing is drawn here" }, "both placed")] : []),
+        el("span", { class: "spacer" }),
+        // one brow over the hair, the other under: a brow is given its own place, just over the pair to start with
+        ...(t === "brows" ? SIDES.filter(sd => !alone.includes(sd)).map(sd => el("button", { class: "small",
+          title: `Give the ${sd} brow (screen ${sd}) a place of its own in the order`,
+          onclick: () => { const o = [...F.layers]; o.splice(o.indexOf("brows") + 1, 0, "brow:" + sd); setLayers(o); } }, sd[0].toUpperCase() + " alone")) : []),
+        ...(dn || t.startsWith("brow:") ? [el("button", { class: "small", title: dn ? "Back in with the other decorators" : "Back with the other brow",
+          onclick: () => setLayers(F.layers.filter(x => x !== t)) }, "×")] : []),
+        el("button", { class: "small", title: "Up: drawn over more", onclick: () => step(t, -1) }, "↑"),
+        el("button", { class: "small", title: "Down: drawn under more", onclick: () => step(t, 1) }, "↓"));
+      row.addEventListener("dragstart", ev => { LAYER_DRAG = t; ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", t); row.classList.add("dragging"); });
+      row.addEventListener("dragend", () => { LAYER_DRAG = null; for (const r of list.children) r.classList.remove("dragging", "above", "below"); });
+      row.addEventListener("dragover", ev => {
+        if (!LAYER_DRAG || LAYER_DRAG === t) return;
+        ev.preventDefault();
+        const r = row.getBoundingClientRect(), after = ev.clientY > r.top + r.height / 2;
+        row.classList.toggle("above", !after); row.classList.toggle("below", after);
+      });
+      row.addEventListener("dragleave", () => row.classList.remove("above", "below"));
+      row.addEventListener("drop", ev => {
+        if (!LAYER_DRAG || LAYER_DRAG === t) return;
+        ev.preventDefault();
+        const r = row.getBoundingClientRect();
+        land(LAYER_DRAG, t, ev.clientY > r.top + r.height / 2);
+      });
+      list.append(row);
+    }
+    list.append(el("div", { class: "layerRow fixed" }, el("span", { class: "grip" }),
+      el("input", { type: "checkbox", checked: SHOW.base, title: "Show it here", onchange: ev => { SHOW.base = ev.target.checked; } }),
+      el("span", { class: "name" }, "base"), el("span", { class: "muted" }, "always underneath")));
+    // a decorator is drawn with the others unless it's given a place of its own, just over them to start with
+    const loose = Object.keys(F.decorators).filter(dn => !F.layers.includes("dec:" + dn));
+    const place = el("select", { title: "Give one decorator its own place in the order: behind the hair, say",
+      onchange: ev => { const o = [...F.layers]; o.splice(o.indexOf("decorators") + 1, 0, "dec:" + ev.target.value); setLayers(o); } },
+      el("option", { value: "" }, "Place a decorator on its own…"), ...loose.map(dn => el("option", { value: dn }, dn)));
+    box.append(list, el("div", { class: "row" },
+      ...(loose.length ? [place] : []),
+      ...(Array.isArray((DOC.face || {}).layers) ? [el("button", { class: "small", title: "Forget this order: back to the one every face starts with",
+        onclick: () => { delete DOC.face.layers; dirty(); buildAll(); } }, "usual order")] : [])));
+    box.append(el("div", { class: "muted" }, "The top of the list is drawn on top. The eyes are one layer: white, then iris" +
+      (F.irisMask === "sclera" ? " (masked by the white)" : "") + ", lower lid, upper lid."));
   }
+  box.append(el("div", { class: "row" }, tog(SHOW, "left", "left side"), tog(SHOW, "right", "right side"),
+             el("span", { class: "muted" }, "|"), tog(INSPECT, "xray", "x-ray lids"), tog(INSPECT, "outlines", "outlines"),
+             tog(INSPECT, "sweep", "sweep gaze to the edges")));
 }
 async function openFace(dir) {
   DIR = dir; localStorage.studioFace = dir;

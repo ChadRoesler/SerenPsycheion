@@ -3,7 +3,9 @@
 // it changes. Forms are filled from the body once, then left to the person, so a
 // poll never yanks a slider out from under a hand.
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const TRUTH = new Set([0, 1, 6, 7]);
+// The robot's own lights are the front two of each rail (SerenSoma's firmware/main/hal/rails.h, 13 Nov
+// 2026): 0 and 11 the microphone and reply, 1 and 10 the camera. Before that they were 0, 1, 6 and 7.
+const TRUTH = new Set([0, 1, 10, 11]), CAMERA = new Set([1, 10]);
 let FEED = [], FEED_LAST = 0, FILLED_ROBOT = false, FILLED_VOICE = false;
 // The feed keeps the last FEED_KEEP touches and shows FEED_SHOWN of them: a good scratch is dozens a minute,
 // and a page that grows a row for each one gets long fast. "Show more" shows FEED_PAGE more.
@@ -30,17 +32,21 @@ function ago(ms) {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${s % 60}s`;
 }
 
+// The LEDs count round the head in a U: 0 at the front of one side, back along it to 5, across to 6 at
+// the back of the other side and forward to 11. So each row is drawn front first, and the second row
+// counts down: 0 and 11 sit over each other at the front, 5 and 6 at the back.
+const RAIL_ORDER = { railA: [0, 1, 2, 3, 4, 5], railB: [11, 10, 9, 8, 7, 6] };
 function paintRails(leds) {
-  for (const [railId, from] of [["railA", 0], ["railB", 6]]) {
+  for (const [railId, order] of Object.entries(RAIL_ORDER)) {
     const rail = $(railId); rail.innerHTML = "";
-    for (let i = from; i < from + 6; i++) {
+    for (const i of order) {
       const hex = (leds || "").slice(i * 6, i * 6 + 6) || "000000";
       const d = document.createElement("span");
       d.className = "led" + (TRUTH.has(i) ? " truth" : "");
       // the LEDs top out at 168: show that as full so a dim color is still visible here
       const c = [0, 2, 4].map(k => Math.min(255, Math.round(parseInt(hex.slice(k, k + 2), 16) * 255 / 168)));
       d.style.background = `rgb(${c.join(",")})`;
-      d.title = `LED ${i}: #${hex}` + (TRUTH.has(i) ? (i % 6 === 0 ? " (mic / reply)" : " (camera)") : "");
+      d.title = `LED ${i}: #${hex}` + (TRUTH.has(i) ? (CAMERA.has(i) ? " (camera)" : " (mic / reply)") : "");
       rail.append(d);
     }
   }

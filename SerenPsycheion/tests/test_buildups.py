@@ -185,6 +185,22 @@ def test_a_step_that_fails_still_puts_the_face_back():
     assert robot.calls[-1] == ("emotion", "neutral", False) and r.firing is None
 
 
+def test_one_that_fills_while_a_pose_is_held_plays_nothing_into_it():
+    """Face Studio's Try this pose locks the robot's face; the robot answers 409 to a pose that doesn't
+    say "hold". No flash, no sound, no neutral sent after: the held pose is left exactly as it is."""
+    class Held(FakeRobot):
+        async def emotion(self, name, rest=False):
+            await super().emotion(name, rest)
+            req = httpx.Request("POST", "http://bot/api/emotion")
+            raise httpx.HTTPStatusError("held", request=req, response=httpx.Response(409, json={"held": "smug"}, request=req))
+    robot = Held()
+    r = _runner(robot)
+    r.set_face({"tip": B(flash=[168, 0, 111], sound="gasp")})
+    asyncio.run(r.fire("tip"))
+    assert robot.calls == [("emotion", "surprised", True)]
+    assert r.firing is None and "held" in r.last_skipped["tip"]
+
+
 @pytest.mark.parametrize("voice, saturday, enabled, says", [
     (FakeVoice(), False, True, "work hours"),
     (FakeVoice(call_open=True), True, True, "a call is open"),
