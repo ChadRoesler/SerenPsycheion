@@ -549,14 +549,18 @@ function draw() {
 }
 function loop() { if (shown()) draw(); requestAnimationFrame(loop); }   // on another tab, nothing is drawn
 
+// Whether moving one side moves the other. The eyes follow the Eyes panel's "mirror moves", kept here so
+// a rebuild of the panel (every edit, the end of every drag) doesn't tick it back on. The brows follow
+// the pose's "Brows move together": untick it and a brow is moved on its own, dragged or typed.
+let MIRROR_EYES = true;
+function browsLinked() { const p = DOC ? resolve().emotions[EMO] || {} : {}; return !p.brow || Array.isArray(p.brow); }
 function setAnchor(key, x, y, rebuild = true) {
-  const sym = $("#symLock") ? $("#symLock").checked : true;
   if (key === "eyeR" || key === "eyeL") {
     const e = sect("eyes"); e[key === "eyeR" ? "right_pos" : "left_pos"] = [x, y];
-    if (sym) e[key === "eyeR" ? "left_pos" : "right_pos"] = [-x, y];
+    if (MIRROR_EYES) e[key === "eyeR" ? "left_pos" : "right_pos"] = [-x, y];
   } else if (key === "browR" || key === "browL") {
     const b = sect("brows"); b[key === "browR" ? "right_pos" : "left_pos"] = [x, y];
-    if (sym) b[key === "browR" ? "left_pos" : "right_pos"] = [-x, y];
+    if (browsLinked()) b[key === "browR" ? "left_pos" : "right_pos"] = [-x, y];
   } else if (key === "mouth") sect("mouths").pos = [x, y];
   else if (key.startsWith("dec:")) {
     const F = resolve(), spec = sect("decorators")[key.slice(4)], a = decAnchor(F, spec);
@@ -907,9 +911,10 @@ function buildLeftPanels() {
       el("option", { value: "right" }, "right (screen +x)"), el("option", { value: "left" }, "left (screen -x)")); s.value = F.drawn; return s; })())));
 
   const e = sect("eyes");
-  L.append(el("section", {}, el("h2", {}, "Eyes", el("label", { class: "tiny" }, el("input", { type: "checkbox", id: "symLock", checked: true }), "mirror moves")),
-    pair("Right pos", () => F.rpos, v => { e.right_pos = v; if ($("#symLock").checked) e.left_pos = [-v[0], v[1]]; }),
-    pair("Left pos", () => F.lpos, v => { e.left_pos = v; if ($("#symLock").checked) e.right_pos = [-v[0], v[1]]; }),
+  L.append(el("section", {}, el("h2", {}, "Eyes", el("label", { class: "tiny" }, el("input", { type: "checkbox", id: "symLock", checked: MIRROR_EYES,
+      onchange: ev => { MIRROR_EYES = ev.target.checked; } }), "mirror moves")),
+    pair("Right pos", () => F.rpos, v => { e.right_pos = v; if (MIRROR_EYES) e.left_pos = [-v[0], v[1]]; }),
+    pair("Left pos", () => F.lpos, v => { e.left_pos = v; if (MIRROR_EYES) e.right_pos = [-v[0], v[1]]; }),
     pair("Socket size", () => F.socket, v => e.socket_size = v),
     num("Clip radius", () => F.radius, v => e.clip_radius = v),
     num("Iris parallax %", () => F.parallax, v => e.iris_parallax = v),
@@ -947,8 +952,9 @@ function buildLeftPanels() {
     namedMap("Shapes (L / R): each emotion picks one; angry and sad by default where drawn", b.shapes,
       () => { const n = prompt("New brow shape (e.g. angry, sad, raised):"); if (n) { b.shapes[n.trim()] = {}; dirty(); buildAll(); } },
       k => sideRow(k, b.shapes, k, true)),
-    pair("Right pos", () => F.brpos, v => { b.right_pos = v; if ($("#symLock").checked) b.left_pos = [-v[0], v[1]]; }),
-    pair("Left pos", () => F.blpos, v => { b.left_pos = v; if ($("#symLock").checked) b.right_pos = [-v[0], v[1]]; })));
+    pair("Right pos", () => F.brpos, v => { b.right_pos = v; if (browsLinked()) b.left_pos = [-v[0], v[1]]; }),
+    pair("Left pos", () => F.blpos, v => { b.left_pos = v; if (browsLinked()) b.right_pos = [-v[0], v[1]]; }),
+    el("div", { class: "muted tiny" }, "Moved together while the pose's \"Brows move together\" is ticked; one at a time while it isn't.")));
 
   // the left is what the face is made of; what it does about a touch kept up (build-ups) is on the right
   L.append(touchPanel(F));
