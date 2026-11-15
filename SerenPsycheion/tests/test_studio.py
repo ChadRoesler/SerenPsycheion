@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+import struct
 import zipfile
 
 import httpx
@@ -171,6 +172,43 @@ def test_uploads_art_a_pxp_and_a_sound_but_not_a_fake_sound(tmp_path):
     assert fake.status_code == 400 and "ffmpeg" in fake.json()["detail"]
 
 
+def test_a_pxp_can_be_any_size_and_must_be_a_pxp(tmp_path):
+    """A .pxp is the whole drawing and has no cap (a 20.6 MB one was turned away at 16 MB, 14 Nov 2026).
+    It lands whole or not at all, and something that isn't one doesn't replace the drawing that's there."""
+    _a_face(tmp_path)
+    big = struct.pack("<i", 0x31505850) + b"\x00" * (24 * 1024 * 1024)
+    with _client(tmp_path) as c:
+        ok = c.post("/api/studio/file", params={"dir": "mine", "name": "WrenFace.pxp"}, content=big, headers=AUTH)
+        fake = c.post("/api/studio/file", params={"dir": "mine", "name": "WrenFace.pxp"}, content=b"not one", headers=AUTH)
+        png = c.post("/api/studio/file", params={"dir": "mine", "name": "huge.png"}, content=b"\x89PNG" + b"\x00" * (17 * 1024 * 1024), headers=AUTH)
+        home = c.get("/api/studio/home", headers=AUTH).json()
+    d = tmp_path / "faces" / "mine"
+    assert ok.status_code == 200 and (d / "WrenFace.pxp").stat().st_size == len(big)
+    assert fake.status_code == 400 and (d / "WrenFace.pxp").stat().st_size == len(big)
+    assert not list(d.glob(".*.uploading")) and "mine/WrenFace.pxp" in home["pxps"]
+    assert png.status_code == 413 and "16 MB" in png.json()["detail"]
+
+
+def test_a_deleted_face_goes_to_the_trash_and_off_the_list(tmp_path):
+    """Deleting a face moves its folder into .trash, which the list never shows; nothing is erased. The
+    faces folder itself, a folder that isn't a face, and one outside it are refused."""
+    _a_face(tmp_path)
+    _a_face(tmp_path, "keep")
+    (tmp_path / "faces" / "plain").mkdir()
+    with _client(tmp_path) as c:
+        r = c.post("/api/studio/delete", params={"dir": "mine"}, headers=AUTH)
+        home = c.get("/api/studio/home", headers=AUTH).json()
+        again = c.post("/api/studio/delete", params={"dir": "mine"}, headers=AUTH)
+        plain = c.post("/api/studio/delete", params={"dir": "plain"}, headers=AUTH)
+        out = c.post("/api/studio/delete", params={"dir": "../faces"}, headers=AUTH)
+        noauth = c.post("/api/studio/delete", params={"dir": "keep"})
+    trashed = tmp_path / "faces" / r.json()["trashed"]
+    assert r.status_code == 200 and (trashed / "face.yaml").is_file() and (trashed / "iris.png").is_file()
+    assert not (tmp_path / "faces" / "mine").exists() and home["faces"] == ["keep"]
+    assert again.status_code == 404 and plain.status_code == 400 and out.status_code in (400, 403)
+    assert noauth.status_code == 401 and (tmp_path / "faces" / "keep" / "face.yaml").is_file()
+
+
 # -- a face travels as one file ------------------------------------------------------------------------
 
 def test_export_then_import_is_the_same_face(tmp_path):
@@ -239,12 +277,12 @@ def test_try_sends_the_pose_being_worked_on(tmp_path):
 
 def test_the_rails_are_lit_led_by_led_and_kept_with_the_face(tmp_path):
     """The LEDs count round the head in a U (0 to 5 back along its right, 6 to 11 forward along its
-    left); the front two of each rail (0, 1, 10, 11) are the robot's own and are never colored. A
-    pose's color goes on the other eight, except where lights.leds gives one its own. The face keeps
-    them through a save."""
+    left). Each LED can have its own color, "#000000" for out; the front two of each rail (0, 1, 10,
+    11) are dark unless colored, since the microphone and camera light them. One of the eight left
+    out is the pose's color. The face keeps them through a save."""
     _a_face(tmp_path)
     robot = Robot()
-    lights = {"color": "#ff0000", "brightness": 100, "leds": {"2": "#00ff00", "9": "#0000ff"}}
+    lights = {"color": "#ff0000", "brightness": 100, "leds": {"2": "#00ff00", "9": "#0000ff", "4": "#000000", "11": "#ffffff"}}
     with _client(tmp_path, robot) as c:
         lit = c.post("/api/studio/bot/leds", headers=AUTH, content=json.dumps({"lights": lights}))
         out = c.post("/api/studio/bot/leds", headers=AUTH, content=json.dumps({"lights": None}))
@@ -255,7 +293,8 @@ def test_the_rails_are_lit_led_by_led_and_kept_with_the_face(tmp_path):
         back = c.get("/api/studio/face", params={"dir": "mine"}, headers=AUTH).json()["doc"]["emotions"]["happy"]["lights"]
     frame, dark = robot.frames
     assert lit.status_code == 200 and len(frame) == 12
-    assert [frame[i] for i in (0, 1, 10, 11)] == [[0, 0, 0]] * 4
+    # the robot's own four are out unless colored (11 is); one of the eight set to black is out
+    assert [frame[i] for i in (0, 1, 10)] == [[0, 0, 0]] * 3 and frame[11] == [168, 168, 168] and frame[4] == [0, 0, 0]
     assert frame[2] == [0, 168, 0] and frame[9] == [0, 0, 168] and frame[3] == frame[5] == frame[6] == frame[8] == [168, 0, 0]
     assert out.status_code == 200 and dark == [[0, 0, 0]] * 12
     assert bad.status_code == 400 and len(robot.frames) == 2

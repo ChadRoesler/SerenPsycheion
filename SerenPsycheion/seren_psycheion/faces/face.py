@@ -216,15 +216,18 @@ POSE_LEDS = (2, 3, 4, 5, 6, 7, 8, 9)
 
 
 def lights_frame(lights):
-    """A pose's rails LED by LED, as /api/leds wants them: twelve [r, g, b], each 0~168. The pose's
-    color on its eight LEDs, except where lights.leds ({number: color}) gives one its own; the robot's
-    own four are left dark (it holds them above anything sent). None or no lights: all out."""
+    """A pose's rails LED by LED, as /api/leds wants them: twelve [r, g, b], each 0~168. lights.leds
+    ({number: color}, "#000000" for out) gives each its own; one it leaves out is the pose's color if
+    it's one of the eight, out if it's one of the robot's own four (which can be colored: the robot
+    lights its microphone and camera over them while those are on). None or no lights: all out."""
     frame = [[0, 0, 0] for _ in range(LED_COUNT)]
     if not lights:
         return frame
     own = {int(k): v for k, v in (lights.get("leds") or {}).items()}
-    for i in POSE_LEDS:
-        frame[i] = lights_rgb({"color": own.get(i) or lights.get("color"), "brightness": lights.get("brightness", 40)})
+    for i in range(LED_COUNT):
+        color = own.get(i) or (lights.get("color") if i in POSE_LEDS else None)
+        if color:
+            frame[i] = lights_rgb({"color": color, "brightness": lights.get("brightness", 40)})
     return frame
 
 

@@ -471,15 +471,25 @@ function anchors(F) {
   return list;
 }
 let RAILS_SHOWN = null;
+// The bars beside the screen, LED by LED. Seen from the front, the robot's right rail (0 to 5) is on the
+// viewer's left; each bar is drawn front of the head at the top, like the LED picture in the Pose panel.
+const RAIL_BARS = { railL: [0, 1, 2, 3, 4, 5], railR: [11, 10, 9, 8, 7, 6] };
 function paintRails(pose, now) {
-  const L = pose && pose.lights, key = L ? `${L.color}/${L.brightness ?? 40}/${L.pulse || 0}` : "";
+  const L = pose && pose.lights, key = L ? JSON.stringify([L.color, L.leds, L.brightness ?? 40, L.pulse || 0]) : "";
   if (key === RAILS_SHOWN && !(L && L.pulse)) return;
   RAILS_SHOWN = key;
   // the same breath as the robot: full, down to 15%, back
   const since = now - (LIVE.rollT0 ?? now);
   const breath = L && L.pulse ? 0.15 + 0.85 * (0.5 + 0.5 * Math.cos(2 * Math.PI * (since % L.pulse) / L.pulse)) : 1;
-  for (const r of [$("#railL"), $("#railR")]) {
-    r.style.background = L ? L.color : "#000";
+  const colors = L ? ledColors(L) : null;
+  for (const [id, order] of Object.entries(RAIL_BARS)) {
+    const r = $("#" + id);
+    if (r.children.length !== order.length) r.replaceChildren(...order.map(() => el("span", { class: "railLed" })));
+    order.forEach((i, k) => {
+      const seg = r.children[k], c = colors ? colors[i] : LED_OFF;
+      seg.style.background = c === LED_OFF ? "" : c;
+      seg.title = `LED ${i}: ${c === LED_OFF ? "out" : c}`;
+    });
     r.style.opacity = L ? (0.35 + 0.65 * (L.brightness ?? 40) / 100) * breath : 1;
   }
 }
@@ -1235,51 +1245,91 @@ function robotPanel(pose) {
 // The twelve LEDs count round the head in a U: 0 at the front of the robot's right side, back along it
 // to 5, across to 6 at the back of its left side and forward to 11. Drawn looking down on the head with
 // the screen at the top, like the head-touch picture, so 0 to 5 run down the right of the drawing.
-// The front two of each rail are the robot's own (0 and 11 the microphone and reply, 1 and 10 the
-// camera: SerenSoma's firmware/main/hal/rails.h, 13 Nov 2026); a pose colors the other eight, 2 to 9.
+// The front two of each rail (0 and 11 the microphone and reply, 1 and 10 the camera: SerenSoma's
+// firmware/main/hal/rails.h, 13 Nov 2026) can be colored too; the robot only lights them over a pose
+// while the mic or camera is on. A pose that hasn't colored its LEDs one by one fills the other eight.
 const LED_RIGHT = [0, 1, 2, 3, 4, 5], LED_LEFT = [11, 10, 9, 8, 7, 6], LED_OWN = new Set([0, 1, 10, 11]);
-let LED_SEL = null;        // the LED being colored, kept across the panel's rebuilds
-// lights.leds is {"<number>": "#rrggbb"} for the LEDs that differ from the pose's color. It's saved with
-// the face; the robot shows a pose in its one color until the firmware learns the rest (Soma's side), so
-// for now "Light these" is how they're seen: Psycheion sends the frame itself.
+const LED_MOOD = [2, 3, 4, 5, 6, 7, 8, 9], LED_OFF = "#000000";
+const LED_SEL = new Set([2]);   // the LEDs being colored; kept across rebuilds, so a pose switch keeps them
+const isHex = v => /^#?[0-9a-fA-F]{6}$/.test(String(v || "").trim());
+const asHex = v => { const s = String(v).trim().toLowerCase(); return s.startsWith("#") ? s : "#" + s; };
+// lights.leds is {"<number>": "#rrggbb"} for every LED, "#000000" when it's out. A pose's lights from
+// before (one color, perhaps a few LEDs of their own) read the same way: the eight that weren't given one
+// are the pose's color. lights.color is kept as the most common lit color, for firmware that shows a pose
+// in one color (all of it, until the robot learns the rest: Soma's side).
+function ledColors(L) {
+  const own = L.leds || {};
+  return Array.from({ length: 12 }, (_, i) => own[i] && isHex(own[i]) ? asHex(own[i]) : (LED_MOOD.includes(i) && isHex(L.color) ? asHex(L.color) : LED_OFF));
+}
+function mostCommon(colors) {
+  const lit = colors.filter(c => c !== LED_OFF), n = {};
+  for (const c of lit) n[c] = (n[c] || 0) + 1;
+  return Object.keys(n).sort((a, b) => n[b] - n[a] || lit.indexOf(a) - lit.indexOf(b))[0] || LED_OFF;
+}
+// dark ink on a light LED, light ink on a dark one
+const inkFor = hex => { const [r, g, b] = hexRGB(hex); return 0.299 * r + 0.587 * g + 0.114 * b > 140 ? "#000" : "#fff"; };
 function ledMap(L, edit) {
-  const own = L.leds || {}, cells = {};
-  const colorOf = i => own[i] || L.color;
-  const cell = i => {
-    const mine = LED_OWN.has(i);
-    const c = el("button", { type: "button", class: "led" + (mine ? " own" : "") + (i === LED_SEL ? " on" : "") + (own[i] ? " set" : ""),
-      title: mine ? `LED ${i}: the robot's own (microphone, reply, camera)` : `LED ${i}${own[i] ? ": " + own[i] : ": the pose's color"}`,
-      onclick: () => { LED_SEL = LED_SEL === i ? null : i; buildRight(); } }, String(i));
-    if (mine) c.disabled = true; else c.style.background = colorOf(i);
-    return cells[i] = c;
-  };
-  const map = el("div", { class: "ledMap" },
-    el("div", { class: "ledCol" }, ...LED_LEFT.map(cell)),
-    el("div", { class: "ledHead" }, el("span", { class: "tiny" }, "screen"), el("span", { class: "muted tiny" }, "top of the head")),
-    el("div", { class: "ledCol" }, ...LED_RIGHT.map(cell)));
+  const box = el("div", { class: "sub ledBox" });
   const send = lights => api("/api/studio/bot/leds", { method: "POST", body: JSON.stringify({ lights }) });
-  const out = [el("div", { class: "muted tiny" }, "Each LED its own color: click one. Looking down on the head, the screen at the top."), map];
-  if (LED_SEL != null && !LED_OWN.has(LED_SEL)) {
-    const i = LED_SEL;
-    const pick = el("input", { type: "color", value: colorOf(i).toLowerCase(), oninput: ev => {
-      cells[i].style.background = ev.target.value; cells[i].classList.add("set");
-      edit(l => { l.leds = { ...(l.leds || {}), [i]: ev.target.value }; });
-    } });
-    out.push(el("div", { class: "row" }, el("span", { class: "muted" }, `LED ${i}`), pick,
-      el("button", { class: "small", title: "Back to the pose's color", onclick: () => {
-        edit(l => { const rest = { ...(l.leds || {}) }; delete rest[i]; if (Object.keys(rest).length) l.leds = rest; else delete l.leds; });
-        buildRight();
-      } }, "same as the rest")));
-  }
-  out.push(el("div", { class: "row" },
-    el("button", { type: "button", class: "botAct small", title: "Light the rails on the robot as they are here, each LED its color",
-      onclick: async () => { await send(pose_lights()); botSay("The rails are lit as drawn."); } }, "Light these"),
-    el("button", { type: "button", class: "botAct small", title: "Put the pose's LEDs out on the robot",
-      onclick: async () => { await send(null); botSay("The rails are out."); } }, "Rails off"),
-    ...(Object.keys(own).length ? [el("button", { class: "small", title: "Every LED back to the pose's color", onclick: () => { edit(l => { delete l.leds; }); LED_SEL = null; buildRight(); } }, "all the same")] : [])),
-    el("div", { class: "muted tiny" }, "Saved with the face. The robot shows a pose in its one color for now, so Light these is how to see them."));
-  return el("div", { class: "sub" }, ...out);
-  // read when the button is pressed, not when it was built: the picker edits the pose after this ran
+  // every LED written out, so none falls back on a color that's no longer shown anywhere
+  const setColors = (which, hex) => edit(l => {
+    const now = ledColors(l);
+    for (const i of which) now[i] = hex;
+    l.leds = Object.fromEntries(now.map((c, i) => [i, c]));
+    l.color = mostCommon(now);
+  });
+  // only this box is redrawn on a click: rebuilding the column moved the panel under the pointer
+  const render = () => {
+    const colors = ledColors(pose_lights() || L), cells = {};
+    const paint = (i, hex) => { const c = cells[i]; if (!c) return; c.style.background = hex === LED_OFF ? "" : hex; c.style.color = hex === LED_OFF ? "" : inkFor(hex); c.classList.toggle("off", hex === LED_OFF); };
+    const cell = i => {
+      const c = el("button", { type: "button", class: "led" + (LED_OWN.has(i) ? " own" : "") + (LED_SEL.has(i) ? " on" : ""),
+        title: `LED ${i}: ${colors[i] === LED_OFF ? "out" : colors[i]}` + (LED_OWN.has(i) ? ". The microphone and camera light it over this while they're on" : "") +
+               ". Click to pick it; Ctrl or Shift and click to pick several",
+        onclick: ev => {
+          if (ev.ctrlKey || ev.shiftKey || ev.metaKey) { if (LED_SEL.has(i)) LED_SEL.delete(i); else LED_SEL.add(i); }
+          else if (LED_SEL.size === 1 && LED_SEL.has(i)) LED_SEL.clear();
+          else { LED_SEL.clear(); LED_SEL.add(i); }
+          render();
+        } }, String(i));
+      cells[i] = c; paint(i, colors[i]);
+      return c;
+    };
+    const choose = list => { LED_SEL.clear(); for (const i of list) LED_SEL.add(i); render(); };
+    const sel = [...LED_SEL].sort((a, b) => a - b), first = sel.length ? colors[sel[0]] : LED_OFF;
+    const mixed = sel.some(i => colors[i] !== first);
+    const apply = hex => { setColors(sel, hex); for (const i of sel) paint(i, hex); };
+    const hexBox = el("input", { type: "text", class: "hexIn", value: mixed ? "" : first, placeholder: mixed ? "several" : "#rrggbb", spellcheck: "false",
+      title: "The color as a hex code: copy it, or paste one in",
+      onchange: ev => { if (!isHex(ev.target.value)) { ev.target.value = mixed ? "" : first; return; } const h = asHex(ev.target.value); pick.value = h; apply(h); render(); } });
+    const pick = el("input", { type: "color", value: first === LED_OFF ? "#ff4fa0" : first,
+      oninput: ev => { hexBox.value = ev.target.value; apply(ev.target.value); }, onchange: () => render() });
+    box.replaceChildren(
+      el("div", { class: "ledMap" },
+        el("div", { class: "ledCol" }, ...LED_LEFT.map(cell)),
+        el("div", { class: "ledHead" }, el("span", { class: "tiny" }, "screen"), el("span", { class: "muted tiny" }, "top of the head")),
+        el("div", { class: "ledCol" }, ...LED_RIGHT.map(cell))),
+      el("div", { class: "row ledPick" },
+        el("button", { class: "small", onclick: () => choose(LED_MOOD) }, "the eight"),
+        el("button", { class: "small", onclick: () => choose([...Array(12).keys()]) }, "all"),
+        el("button", { class: "small", title: "LEDs 0 to 5: the robot's right side", onclick: () => choose(LED_RIGHT) }, "right rail"),
+        el("button", { class: "small", title: "LEDs 6 to 11: the robot's left side", onclick: () => choose(LED_LEFT) }, "left rail"),
+        el("button", { class: "small", onclick: () => choose([]) }, "none")),
+      sel.length
+        ? el("div", { class: "row" }, el("span", { class: "muted" }, sel.length === 1 ? `LED ${sel[0]}` : `${sel.length} LEDs`), pick, hexBox,
+            el("button", { class: "small", title: "Put these out", onclick: () => { apply(LED_OFF); render(); } }, "off"))
+        : el("div", { class: "muted tiny" }, "Click an LED to color it; Ctrl or Shift and click for several."),
+      el("div", { class: "row" },
+        el("button", { type: "button", class: "botAct small", title: "Light the rails on the robot as they are here, each LED its color",
+          onclick: async () => { await send(pose_lights()); botSay("The rails are lit as drawn."); } }, "Light these"),
+        el("button", { type: "button", class: "botAct small", title: "Put the rails out on the robot",
+          onclick: async () => { await send(null); botSay("The rails are out."); } }, "Rails off")),
+      el("div", { class: "muted tiny" }, "Looking down on the head, the screen at the top. Saved with the face. The robot shows a pose in one color for now (the most common one here), so Light these is how to see each LED."));
+    queueMicrotask(botButtons);
+  };
+  render();
+  return box;
+  // read when it's drawn, not when this ran: the picker edits the pose after
   function pose_lights() { return (resolve().emotions[EMO] || {}).lights || null; }
 }
 
@@ -1504,23 +1554,17 @@ function buildRightPanels() {
       } }), "Rail lights while this pose holds"));
       if (L) {
         const edit = fn => { const m = o(); m.lights = { ...pose.lights }; fn(m.lights); pose.lights = m.lights; dirty(); };
-        const hex = el("input", { type: "text", style: "width:72px", value: L.color, onchange: ev => {
-          const v = ev.target.value.trim();
-          if (!/^#?[0-9a-fA-F]{6}$/.test(v)) { ev.target.value = pose.lights.color; return; }
-          const c = v.startsWith("#") ? v : "#" + v;
-          ev.target.value = c; pick.value = c.toLowerCase(); edit(l => l.color = c);
-        } });
-        const pick = el("input", { type: "color", value: L.color.toLowerCase(), oninput: ev => { hex.value = ev.target.value; edit(l => l.color = ev.target.value); } });
         const bright = v => clamp(Math.round(v) || 0, 0, 100);
         const slide = el("input", { type: "range", min: 0, max: 100, value: L.brightness ?? 40, oninput: ev => edit(l => l.brightness = bright(ev.target.value)) });
         const pulsing = !!L.pulse;
-        box.append(el("label", {}, el("span", {}, "Color"), pick, hex), el("label", {}, el("span", {}, "Brightness"), slide),
+        // each LED its own color, below: the one color a pose used to have is what they share most
+        box.append(el("label", {}, el("span", {}, "Brightness"), slide),
           el("label", {}, el("input", { type: "checkbox", checked: pulsing, onchange: ev => {
             edit(l => { if (ev.target.checked) l.pulse = 2000; else delete l.pulse; });
             buildRight();
           } }), "Pulse"),
           ...(pulsing ? [num("One breath (ms)", () => L.pulse, v => edit(l => l.pulse = clamp(Math.round(v) || 300, 300, 10000)), 100)] : []),
-          el("div", { class: "muted tiny" }, "Fades in on four LEDs a rail. The other two stay free for the mic, reply and camera lights. LEDs mix color differently from a screen, so Try this pose to judge it."),
+          el("div", { class: "muted tiny" }, "LEDs mix color differently from a screen, so light them on the robot to judge it."),
           ledMap(L, edit));
       }
       return box;
@@ -1686,10 +1730,11 @@ function suggest(name, bb) {
 }
 // The log is in the Import layers panel; its last line is also said in the bar, where a folded panel can't hide it.
 const log = msg => { $("#log").textContent += msg + "\n"; $("#log").scrollTop = 1e9; $("#studioSaid").textContent = $("#studioSaid").title = msg; };
+let LAYERS_READ = 0;
 $("#pxpLoad").onclick = async () => {
   const path = $("#pxpSel").value; if (!path) return;
   $("#pxpTable").textContent = "reading…";
-  try { LAYERS = await api(`/api/studio/pxp?path=${encodeURIComponent(path)}`); }
+  try { LAYERS = await api(`/api/studio/pxp?path=${encodeURIComponent(path)}&v=${Date.now()}`); LAYERS_READ = Date.now(); }
   catch (e) { $("#pxpTable").textContent = e.message; return; }
   const t = el("table");
   for (const L of LAYERS) {
@@ -1715,7 +1760,9 @@ function layerData(L) {
   return new Promise((ok, bad) => {
     const img = new Image();
     img.onload = () => { const c = document.createElement("canvas"); c.width = SW; c.height = SH; const x = c.getContext("2d"); x.drawImage(img, 0, 0); ok(x.getImageData(0, 0, SW, SH)); };
-    img.onerror = bad; img.src = `/studio/pxp-layer?path=${encodeURIComponent($("#pxpSel").value)}&i=${L.i}`;
+    // the read's stamp in the address: a browser keeps a picture by its address for as long as the page is
+    // open, and the same path and index is another picture once the .pxp has been uploaded again
+    img.onerror = bad; img.src = `/studio/pxp-layer?path=${encodeURIComponent($("#pxpSel").value)}&i=${L.i}&v=${LAYERS_READ}`;
   });
 }
 // smallest span [start, start+len) holding [a, b) that the firmware would centre on `centre`:
@@ -2087,21 +2134,48 @@ function uploadFiles() {
   const pick = $("#pickFiles");
   pick.value = "";
   pick.onchange = async () => {
+    const failed = [], done = [];
     for (const f of pick.files) {
       const name = f.name.replace(/[^A-Za-z0-9_.\-]+/g, "_");
+      $("#studioSaid").textContent = `Uploading ${f.name} (${(f.size / 1048576).toFixed(1)} MB)…`;
       try {
         const j = await api(`/api/studio/file?dir=${encodeURIComponent(DIR)}&name=${encodeURIComponent(name)}`, { method: "POST", body: f });
-        log(`Uploaded ${j.name}.`);
-      } catch (e) { log(`${f.name}: ${e.message}`); }
+        done.push(j.name);
+      } catch (e) { failed.push(`${f.name}: ${e.message}`); }
     }
+    const pxp = done.find(n => /\.pxp$/i.test(n));
+    if (pxp) localStorage.studioPxp = `${DIR}/${pxp}`;            // what was just brought in is what's read next
     await refreshLists();
     await openFace(DIR);
+    // said after the reload, which clears the bar and the line: an upload that failed has to stay readable
+    for (const n of done) log(`Uploaded ${n}.`);
+    for (const m of failed) log(`Not uploaded: ${m}`);
+    if (failed.length) banner(`Not uploaded: ${failed.join(" · ")}`);
+    // a new .pxp is read straight away, and the panel opened on it: uploading only brings the drawing in,
+    // and the face's art changes when its layers are imported
+    if (pxp) {
+      setFolded("import layers", false); settle("stage");
+      await $("#pxpLoad").onclick();
+      log(`${pxp} is read: tick the layers to bring in and press Import checked, then Save.`);
+    }
   };
   pick.click();
 }
 $("#newFace").onclick = newFace; $("#welcomeNew").onclick = newFace;
 $("#openFolder").onclick = importZip; $("#welcomeOpen").onclick = importZip;
 $("#exportFace").onclick = exportFace; $("#uploadFiles").onclick = uploadFiles;
+$("#deleteFace").onclick = async () => {
+  if (!DIR) return;
+  const warn = DIRTY ? "\n\nIt has unsaved changes, which go with it." : "";
+  if (!confirm(`Delete the face "${DIR}"?\n\nIts folder is moved into the faces folder's .trash on Psycheion's machine, not erased, so it can be put back from there. A face already sent to the robot stays on the robot.${warn}`)) return;
+  const r = await api(`/api/studio/delete?dir=${encodeURIComponent(DIR)}`, { method: "POST", body: "{}" });
+  const gone = DIR;
+  dirty(false); DIR = ""; DOC = null;
+  if (localStorage.studioFace === gone) delete localStorage.studioFace;
+  if ((localStorage.studioPxp || "").startsWith(gone + "/")) delete localStorage.studioPxp;
+  await home();
+  log(`Deleted ${gone}: it's in ${r.trashed} if you want it back.`);
+};
 function setZoom(z) { ZOOM = z; screen.width = SW * z; screen.height = SH * z; $("#zoom").value = String(z); }
 // The biggest whole zoom that fits the middle column and leaves the row under the screen in view. Whole
 // only: it's pixel art.
@@ -2118,23 +2192,24 @@ async function refreshLists() {
   for (const f of HOME.faces) fs.append(el("option", { value: f }, f));
   for (const f of HOME.waiting || []) fs.append(el("option", { value: f }, f + "  (new: has a .pxp, no face.yaml yet)"));
   if (keep) { if (![...fs.options].some(o => o.value === keep)) fs.append(el("option", { value: keep }, keep)); fs.value = keep; }
+  // the .pxp list too: it was only ever filled once, so one uploaded since didn't show in Import layers
+  const ps = $("#pxpSel"), was = ps.value; ps.innerHTML = "";
+  for (const p of HOME.pxps) ps.append(el("option", { value: p }, p));
+  ps.value = [localStorage.studioPxp, was].find(p => p && HOME.pxps.includes(p)) || HOME.pxps[0] || "";
 }
 async function home(open) {
   await refreshLists();
   BOT = await api("/api/studio/bot");
   if (BOT.job && BOT.job.running) watchBotJob();
   const fs = $("#faceSel");
-  const ps = $("#pxpSel"); ps.innerHTML = "";
-  for (const p of HOME.pxps) ps.append(el("option", { value: p }, p));
-  ps.value = [localStorage.studioPxp].find(p => p && HOME.pxps.includes(p)) || HOME.pxps[0] || "";
-  ps.onchange = () => localStorage.studioPxp = ps.value;
+  $("#pxpSel").onchange = () => localStorage.studioPxp = $("#pxpSel").value;   // refreshLists filled it
   const Q = new URLSearchParams(location.search);   // ?face=<folder>&sheet=1, for bookmarks
   const all = [...HOME.faces, ...(HOME.waiting || [])];
   const want = open || [Q.get("face"), localStorage.studioFace, all.find(f => /studio/.test(f)), all.find(f => /portrait/.test(f))].find(f => f && all.includes(f)) || all[0];
   $("#welcome").style.display = want ? "none" : "block";
   GRID.style.display = want ? "" : "none";
   $("#welcomeWhere").textContent = "No faces in Psycheion yet. Start one, or import one someone shared.";
-  for (const id of ["#reload", "#save", "#exportFace", "#uploadFiles"]) $(id).disabled = !want;
+  for (const id of ["#reload", "#save", "#exportFace", "#uploadFiles", "#deleteFace"]) $(id).disabled = !want;
   $("#faceSel").style.display = want ? "" : "none";
   if (want) setZoom(Number(localStorage.studioZoom) || fitZoom());
   if (want) { fs.value = want; await openFace(want); }

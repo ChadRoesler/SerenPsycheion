@@ -51,8 +51,11 @@ PAGE_DIR = Path(__file__).parent / "studio_ui"
 SKIP_DIRS = {"build", "__pycache__", "node_modules", "preview"}
 SESSION_COOKIE = "psy_studio"
 SESSION_S = 12 * 3600
-MAX_UPLOAD = 16 * 1024 * 1024        # one file; a .pxp of a busy face is a few MB
-MAX_IMPORT = 64 * 1024 * 1024        # one shared face, zipped
+MAX_UPLOAD = 16 * 1024 * 1024        # one PNG or sound
+# A .pxp is the whole drawing, every layer and pose of it, and can be any size (Chad, 14 Nov 2026, after a
+# 20.6 MB one was turned away at 16 MB). So it has no cap: it's streamed to disk, never held whole in a
+# request, and read once when its layers are cut.
+MAX_IMPORT = 256 * 1024 * 1024       # one shared face, zipped, its .pxp with it
 FILE_NAME = re.compile(r"[A-Za-z0-9_.\-]+")
 UPLOAD_KINDS = {".png": "image/png", ".pxp": "application/octet-stream", ".ogg": "audio/ogg"}
 FACE_DIR = re.compile(r"[A-Za-z0-9_\-][A-Za-z0-9_.\- ]{0,63}(/[A-Za-z0-9_\-][A-Za-z0-9_.\- ]{0,63}){0,3}")
@@ -370,7 +373,8 @@ def studio_router(cfg) -> APIRouter:
             L = cached_layers(store.inside(path))[i]
         except (PermissionError, FileNotFoundError, ValueError, IndexError) as e:
             raise failed(e)
-        return Response(png_rgba(L["w"], L["h"], L["pixels"]), media_type="image/png")
+        # never kept: the same path and index is another picture once the .pxp is uploaded again
+        return Response(png_rgba(L["w"], L["h"], L["pixels"]), media_type="image/png", headers={"Cache-Control": "no-store"})
 
     # -- the faces ----------------------------------------------------------------------------------
 
@@ -406,7 +410,8 @@ def studio_router(cfg) -> APIRouter:
             layers = cached_layers(store.inside(path))
         except (PermissionError, FileNotFoundError, ValueError) as e:
             raise failed(e)
-        return [{"i": i, "name": L["name"], "visible": L["visible"], "bbox": L["bbox"]} for i, L in enumerate(layers)]
+        return JSONResponse([{"i": i, "name": L["name"], "visible": L["visible"], "bbox": L["bbox"]} for i, L in enumerate(layers)],
+                            headers={"Cache-Control": "no-store"})
 
     @r.post("/api/studio/save")
     async def save(request: Request, dir: str, new: str = "", since: str = "", force: str = ""):
@@ -444,9 +449,11 @@ def studio_router(cfg) -> APIRouter:
         ext = Path(name).suffix.lower()
         if Path(name).name != name or not FILE_NAME.fullmatch(name) or ext not in UPLOAD_KINDS:
             raise HTTPException(400, "file names are letters, digits, _ . - and end in .png, .pxp or .ogg")
+        if ext == ".pxp":
+            return await save_pxp(request, d, name)
         body = await request.body()
         if len(body) > MAX_UPLOAD:
-            raise HTTPException(413, f"that's over {MAX_UPLOAD // (1024 * 1024)} MB")
+            raise HTTPException(413, f"{name} is {len(body) / (1024 * 1024):.1f} MB; a {ext} can be up to {MAX_UPLOAD // (1024 * 1024)} MB")
         if ext == ".ogg" and (body[:4] != b"OggS" or b"OpusHead" not in body[:128]):
             raise HTTPException(400, "that isn't Ogg Opus. Make one with: ffmpeg -i in.wav -ac 1 -c:a libopus -b:a 24k out.ogg")
         target = (d / "sounds" / name) if ext == ".ogg" else (d / name)
@@ -457,6 +464,47 @@ def studio_router(cfg) -> APIRouter:
             shutil.copy2(target, keep / name)
         target.write_bytes(body)
         return {"ok": True, "name": target.relative_to(d).as_posix()}
+
+    async def save_pxp(request: Request, d: Path, name: str):
+        """A .pxp, streamed to a file beside where it goes and swapped in once it's all there, so a
+        dropped upload never leaves half a drawing. Checked to be a PixlPunkt document before it
+        replaces anything; the one it replaces is kept in .studio-backup."""
+        d.mkdir(parents=True, exist_ok=True)
+        target, part = d / name, d / f".{name}.uploading"
+        try:
+            with part.open("wb") as out:
+                async for chunk in request.stream():
+                    out.write(chunk)
+            with part.open("rb") as f:
+                head = f.read(4)
+            if len(head) < 4 or struct.unpack("<i", head)[0] != 0x31505850:
+                raise HTTPException(400, f"{name} isn't a PixlPunkt document")
+            if target.exists():
+                keep = d / ".studio-backup"
+                keep.mkdir(exist_ok=True)
+                shutil.copy2(target, keep / name)
+            part.replace(target)
+        finally:
+            part.unlink(missing_ok=True)
+        return {"ok": True, "name": name}
+
+    @r.post("/api/studio/delete")
+    async def delete(dir: str):
+        """Take a face off the list: its folder is moved whole into the faces folder's .trash (which the
+        list never shows), never erased, so it can be put back by moving it out again."""
+        try:
+            d = store.face_dir(dir)
+        except (PermissionError, ValueError) as e:
+            raise failed(e)
+        if d == store.root or not d.is_dir():
+            raise HTTPException(404, "no face there")
+        if not any((d / n).is_file() for n in ("face.yaml", "face.yml")) and not any(d.glob("*.pxp")):
+            raise HTTPException(400, f"{dir} isn't a face (no face.yaml or .pxp in it)")
+        trash = store.root / ".trash"
+        trash.mkdir(exist_ok=True)
+        to = trash / f"{dir.replace('/', '__')}-{time.strftime('%Y%m%d-%H%M%S')}"
+        shutil.move(str(d), str(to))
+        return {"ok": True, "trashed": to.relative_to(store.root).as_posix()}
 
     @r.get("/api/studio/export")
     async def export(dir: str):

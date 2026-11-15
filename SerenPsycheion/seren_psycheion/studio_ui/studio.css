@@ -33,6 +33,8 @@ body.sizingRail, body.sizingRail * { cursor:col-resize !important; user-select:n
 /* ── the controls: the shell's, a size down ── */
 #faces button { padding:3px 9px; font-size:12.5px; line-height:1.25; border-radius:7px; }
 #faces button.small { padding:1px 7px; font-size:12px; }
+#faces button.danger { color:var(--danger); border-color:color-mix(in srgb, var(--danger) 50%, transparent); }
+#faces button.danger:hover { border-color:var(--danger); }
 #faces button:disabled { opacity:.45; cursor:default; border-color:var(--border); }
 #faces input, #faces select { font-size:12.5px; padding:3px 7px; border-radius:7px; }
 #faces input[type=checkbox], #faces input[type=radio], #faces input[type=range] { padding:0; }
@@ -88,7 +90,8 @@ body.movingPanel, body.movingPanel * { cursor:grabbing !important; user-select:n
 #stage { display:flex; flex-direction:column; align-items:center; gap:0; }
 #stage > section, #stage > .strip { width:100%; flex:none; }
 #railWrap { display:flex; align-items:stretch; gap:6px; margin-bottom:10px; }
-#faces .rail { display:block; width:10px; border:1px solid var(--border); border-radius:3px; background:#000; }
+#faces .rail { display:flex; flex-direction:column; gap:2px; padding:2px; width:12px; border:1px solid var(--border); border-radius:3px; background:#000; }
+#faces .rail .railLed { flex:1; border-radius:2px; background:#111; }
 #screen { image-rendering:pixelated; border:1px solid var(--border); border-radius:3px; background:#000; cursor:crosshair; }
 #pxpTable { max-height:320px; overflow:auto; border:1px solid var(--border); border-radius:7px; margin:4px 0; }
 #pxpTable:empty { display:none; }
@@ -158,11 +161,13 @@ body.movingPanel, body.movingPanel * { cursor:grabbing !important; user-select:n
 #faces .ledCol { display:flex; flex-direction:column; gap:4px; }
 #faces .ledHead { width:86px; display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:4px 0 34px;
                   border:1px solid var(--border); border-radius:10px 10px 22px 22px; background:var(--bg-2); }
-#faces .ledMap .led { width:26px; height:22px; padding:0; font-size:10px; line-height:1; border-radius:5px; color:#000;
-                      text-shadow:0 0 2px rgba(255, 255, 255, .7); }
-#faces .ledMap .led.set { border-color:var(--text); }
+#faces .ledMap .led { width:26px; height:22px; padding:0; font-size:10px; font-weight:600; line-height:1; border-radius:5px; }
+#faces .ledMap .led.off { background:var(--bg); color:var(--faint); }
 #faces .ledMap .led.on { outline:2px solid var(--accent); outline-offset:1px; }
-#faces .ledMap .led.own { background:transparent; color:var(--faint); border-style:dashed; text-shadow:none; opacity:1; }
+/* the microphone and camera light these over the pose while they're on */
+#faces .ledMap .led.own { border-style:dashed; border-color:var(--text-dim); }
+#faces .ledBox .ledPick { gap:4px; }
+#faces .ledBox .hexIn { width:86px; font-family:var(--mono); }
 
 /* ── every pose at once ── */
 #faces .sheetBack { position:fixed; inset:0; z-index:60; background:rgba(0, 0, 0, .75); display:none; align-items:flex-start; justify-content:center;
