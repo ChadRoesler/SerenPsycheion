@@ -19,7 +19,9 @@ dependencies = [
     # the shell, auth, config, update checking
     "seren-meninges>=6.1.0,<7",
     # the request log, and seren_sinew.soma: the wire to the body, spelled once
-    "seren-sinew>=5.8.0,<6",  # 5.8.0: build-ups, the face's sounds, the hand in the feed
+    # 5.8.0: build-ups, the face's sounds, the hand in the feed. 5.10.0: appendages (the Night
+    # card's per-appendage ceilings come from SomaRobot.appendages()), night.appendages, power.
+    "seren-sinew>=5.10.0,<6",
     # making faces (seren_psycheion/faces): reading and compositing PNGs, and LVGL's converter
     "Pillow>=10.0",
     "pypng>=0.20220715",

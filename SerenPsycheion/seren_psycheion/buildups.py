@@ -100,6 +100,7 @@ class Buildups:
         self.face: dict[str, Any] = {}
         self.counters: dict[str, Counter] = {}
         self.after_seq = 0
+        self.caught_up = False                       # the first look at the feed only finds where it ends
         self.last_t_ms = -1
         self.firing: Optional[str] = None
         self.last_fired: dict[str, float] = {}       # wall time, for the console
@@ -230,6 +231,13 @@ class Buildups:
         if self.clock() - self.face_at > self.FACE_EVERY_S:
             await self.refresh_face()
         feed = await self.voice.touch(after=self.after_seq)
+        if not self.caught_up:
+            # Just started: the feed still holds what hands did before this service was up (the voice
+            # server keeps its last few hundred touches). Counting those now would tip the face over
+            # for a scratch from an hour ago, the moment a restart lands. Start from where it ends.
+            self.caught_up = True
+            self.after_seq = feed.last
+            return []
         if feed.last < self.after_seq:            # the voice server restarted: its count did too
             self.after_seq = 0
             return []

@@ -40,10 +40,11 @@ def main() -> None:
     import uvicorn
     from seren_meninges.exposure import enforce_server
 
-    from ._diag import diag
+    from ._diag import diag, log_what_the_service_does
     from .app import create_app
     from .config import load_config
 
+    log_what_the_service_does()
     cfg = load_config(args.config)
     # This page can switch a robot's lights and read what a hand did: an open bind
     # with no token is refused here, with the ways out printed.

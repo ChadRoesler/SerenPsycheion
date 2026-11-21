@@ -29,6 +29,10 @@
       <label class="slider"><span>Lights at most</span><input type="range" min="0" max="100" id="nightDimmer"><output></output></label>
       <label class="slider"><span>Speaker at most</span><input type="range" min="0" max="100" id="nightVolume"><output></output></label>
       <label class="slider"><span>Screen at most</span><input type="range" min="0" max="100" id="nightBrightness"><output></output></label>
+      <label class="slider" id="nightLightRow" hidden><span>Flashlight at most</span><input type="range" min="0" max="100" id="nightLight"><output></output></label>
+      <p class="muted tiny" id="nightLightNote" hidden>A ceiling, not a brightness: at night, whatever level the flashlight is asked for, it runs no higher than this. At 100 there is no ceiling. The level itself is set where the light is driven.</p>
+      <div id="nightAppendages"></div>
+      <p class="muted tiny" id="nightAppendagesNote" hidden>One per appendage that takes a night ceiling, as the robot reports them. Each is a ceiling, not a level: whatever an appendage is asked for at night, it runs no higher than this. One you haven't set holds the default its own file asks for; Default hands it back to that.</p>
       <p class="muted tiny">The voice server keeps this, so the bedroom stays dim with this page closed.</p>
       <div class="msg" id="nightMsg"></div>
     </div>

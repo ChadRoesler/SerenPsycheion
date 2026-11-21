@@ -10,6 +10,7 @@
 .led { width:22px; height:22px; border-radius:50%; border:1px solid var(--border); background:#000; }
 .led.truth { outline:1px dashed var(--faint); outline-offset:2px; }
 label.slider, label.num, .row { display:flex; align-items:center; gap:8px; margin:6px 0; }
+label.slider[hidden] { display:none; }
 label.slider > span, label.num > span { min-width:120px; color:var(--text-dim); font-size:13px; }
 label.slider input[type=range] { flex:1; min-width:0; }
 label.slider output { width:36px; text-align:right; font-family:var(--mono); font-size:12px; }

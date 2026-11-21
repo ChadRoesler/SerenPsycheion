@@ -88,6 +88,12 @@ function fillVoice(v) {
   slider("nightDimmer", n.dimmer, x => night({ dimmer: x }));
   slider("nightVolume", n.volume, x => night({ volume: x }));
   slider("nightBrightness", n.brightness, x => night({ brightness: x }));
+  // A ceiling on an appendage light's level. Shown only when the settings carry one: a Sinew
+  // from before the field drops it on the way here, and the slider would have nothing to show.
+  // A voice server from before it refuses the save, and its reason shows under the card.
+  $("nightLightRow").hidden = $("nightLightNote").hidden = n.light == null;
+  if (n.light != null) slider("nightLight", n.light, x => night({ light: x }));
+  fillNightAppendages(n, night);
 
   const work = change => saveVoice({ work_hours: change }, "workMsg");
   const days = $("workDays"); days.innerHTML = "";
@@ -98,6 +104,38 @@ function fillVoice(v) {
   });
   $("workStart").value = w.start; $("workStart").onchange = e => work({ start: Math.round(Number(e.target.value)) });
   $("workEnd").value = w.end; $("workEnd").onchange = e => work({ end: Math.round(Number(e.target.value)) });
+}
+
+// One night-ceiling slider per appendage the robot says takes one, so no part's name lives in this page.
+// Self-gating: a firmware that reports no `night` on its appendages gives no ceilings, and the card keeps
+// the first slice's flashlight slider (night.light). One that does is also the one that reads
+// night.appendages, so the sliders appear exactly when saving into the map starts to mean something.
+async function fillNightAppendages(n, night) {
+  const box = $("nightAppendages"); box.innerHTML = "";
+  let got;
+  try { got = await api("/api/soma/appendages"); } catch (e) { return; }
+  const names = Object.keys(got.ceilings || {});
+  $("nightAppendagesNote").hidden = !names.length;
+  if (!names.length) return;
+  $("nightLightRow").hidden = $("nightLightNote").hidden = true;
+  const set = n.appendages || {};
+  for (const name of names) {
+    const c = got.ceilings[name], mine = set[name];
+    const row = document.createElement("label"); row.className = "slider";
+    const lab = Object.assign(document.createElement("span"), { textContent: `${name} at most` });
+    const input = Object.assign(document.createElement("input"), { type: "range", min: 1, max: 100, value: mine ?? c.default });
+    const out = Object.assign(document.createElement("output"), { textContent: input.value });
+    const back = Object.assign(document.createElement("button"), { type: "button", textContent: "Default",
+      title: `Hand it back to its file's default, ${c.default}`, disabled: mine == null });
+    input.oninput = () => { out.textContent = input.value; };
+    input.onchange = () => { night({ appendages: { [name]: Number(input.value) } }); back.disabled = false; };
+    back.onclick = e => {
+      e.preventDefault(); night({ appendages: { [name]: null } });
+      input.value = out.textContent = c.default; back.disabled = true;
+    };
+    row.title = `Holding ${c.holding} now; its file's default is ${c.default}.`;
+    row.append(lab, input, out, back); box.append(row);
+  }
 }
 
 function somaDown(e) { pill("pillRobot", "robot ?", false); pill("pillVoice", "voice ?", false); $("bodyFacts").textContent = why(e); }

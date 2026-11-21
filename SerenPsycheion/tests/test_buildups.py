@@ -229,6 +229,7 @@ def test_a_step_reads_the_face_counts_the_feed_and_fires():
 
     async def go():
         r = _runner(robot, voice)
+        r.caught_up = True            # it has been up a while; a fresh start is its own test below
         fired = await r.step()
         await asyncio.sleep(0)        # let the firing run
         for _ in range(20):
@@ -242,7 +243,33 @@ def test_one_that_fills_in_work_hours_says_why_it_didnt_fire():
     scratches = [{"kind": "scritch", "scratching": True, "t_ms": t * 1000, "ms": 200} for t in range(7)]
     voice = FakeVoice(feed=[NS(events=scratches, last=7, hand=NS(down=False, from_ms=None, to_ms=None))])
     r = _runner(FakeRobot({"tip": B(seconds=5)}), voice, saturday=False)
+    r.caught_up = True
     assert asyncio.run(r.step()) == [] and r.last_skipped["tip"] == "it's work hours"
+
+
+def test_a_fresh_start_doesnt_count_what_hands_did_before_it_was_up():
+    # 19 Nov 2026: a restart at 13:59:44 logged three "filled" lines by 13:59:46, all from touches the
+    # voice server had kept from before. Out of work hours that is the face tipping over at a deploy.
+    old = [{"kind": "scritch", "scratching": True, "t_ms": t * 1000, "ms": 200} for t in range(7)]
+    new = [{"kind": "scritch", "scratching": True, "t_ms": 60000 + t * 1000, "ms": 200} for t in range(7)]
+    quiet = NS(down=False, from_ms=None, to_ms=None)
+    voice = FakeVoice(feed=[NS(events=old, last=7, hand=quiet), NS(events=new, last=14, hand=quiet)])
+    robot = FakeRobot({"tip": B(seconds=5)})
+
+    async def go():
+        r = _runner(robot, voice)
+        first = await r.step()
+        for _ in range(20):
+            await asyncio.sleep(0)
+        where, sent = r.after_seq, list(robot.calls)
+        second = await r.step()
+        for _ in range(20):
+            await asyncio.sleep(0)
+        return r, first, where, sent, second
+    r, first, where, sent, second = asyncio.run(go())
+    assert first == [] and where == 7 and sent == []               # the old ones: skipped, and it knows where it is
+    assert second == ["tip"] and r.after_seq == 14                 # a scratch since then still earns it
+    assert ("emotion", "surprised", True) in robot.calls
 
 
 # -- the routes ------------------------------------------------------------------------------------
@@ -259,3 +286,27 @@ def test_the_routes(monkeypatch):
         missing = c.post("/api/buildups/nope/test")
     assert listing["buildups"][0]["name"] == "tip" and listing["buildups"][0]["progress"] == 0
     assert off["enabled"] is False and bad.status_code == 400 and missing.status_code == 404
+
+
+def test_a_buildup_that_fires_leaves_a_line_in_the_service_log():
+    # With no handler Python drops INFO: the service then says nothing when a build-up fires or is
+    # skipped, and "did it do that by itself?" has no answer in the log.
+    import io
+    import logging
+
+    from seren_psycheion._diag import log_what_the_service_does
+
+    logger = log_what_the_service_does()
+    assert log_what_the_service_does() is logger
+    ours = [h for h in logger.handlers if getattr(h, "_seren_psycheion", False)]
+    assert len(ours) == 1 and logger.level == logging.INFO and not logger.propagate   # twice is still one handler
+    out, ours[0].stream = ours[0].stream, io.StringIO()
+    try:
+        bu.log.info("build-up %s: tipping into %s", "long_scratch", "dizzy")
+        bu.log.info("build-up %s filled, not fired: %s", "long_scratch", "it's work hours")
+        text = ours[0].stream.getvalue()
+    finally:
+        ours[0].stream = out
+    assert "[INFO] build-up long_scratch: tipping into dizzy" in text
+    assert "[INFO] build-up long_scratch filled, not fired: it's work hours" in text
+    assert text[:4].isdigit()                                                         # a time on every line

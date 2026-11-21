@@ -133,6 +133,29 @@ def create_app(config: Optional[PsycheionConfig] = None, *,
             out["voice_error"] = _unreachable("voice server", soma.voice.url, exc).detail
         return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
+    @app.get("/api/soma/appendages")
+    async def soma_appendages(request: Request) -> JSONResponse:
+        """What is bolted on, and ``ceilings``: every appendage that takes a night ceiling, by name, with
+        the default its file asks for and the one it holds now. The Night card draws one slider per entry.
+        Asked once when the card fills, not on the five-second poll: what is attached barely changes.
+        A firmware without /api/appendages, or a Sinew without the call, is "nothing reports one": the
+        card keeps the first slice's flashlight slider, and nothing is an error."""
+        robot = request.app.state.robot
+        out: dict[str, Any] = {"appendages": [], "kinds": [], "ceilings": {}}
+        if not hasattr(robot, "appendages"):
+            return JSONResponse(out, headers={"Cache-Control": "no-store"})
+        try:
+            got = await robot.appendages()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return JSONResponse(out, headers={"Cache-Control": "no-store"})
+            raise _unreachable("robot", soma.robot.url, exc)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _unreachable("robot", soma.robot.url, exc)
+        out.update(appendages=to_dict(got.appendages), kinds=list(got.kinds),
+                   ceilings={name: to_dict(n) for name, n in got.ceilings().items()})
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
     @app.post("/api/soma/robot/settings")
     async def robot_settings(request: Request):
         """{"dimmer": 0..100, "volume": 0..100, "brightness": 5..100}, any of them; saved on the robot."""

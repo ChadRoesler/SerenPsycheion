@@ -38,8 +38,9 @@ def all_paths(app) -> set:
 class Body:
     """A fake robot and voice server that check the tokens they're handed."""
 
-    def __init__(self, robot_up=True):
+    def __init__(self, robot_up=True, appendages=None):
         self.robot_up = robot_up
+        self.appendages = appendages     # GET /api/appendages's answer; None is a firmware without the route
         self.seen = []
 
     def robot(self, request: httpx.Request) -> httpx.Response:
@@ -54,6 +55,8 @@ class Body:
             body = json.loads(request.content or b"{}")
             s = dict(STATUS["settings"], **body)
             return httpx.Response(200, json={"ok": True, "settings": s})
+        if request.url.path == "/api/appendages" and self.appendages is not None:
+            return httpx.Response(200, json=self.appendages)
         return httpx.Response(404, json={"error": "no"})
 
     def voice(self, request: httpx.Request) -> httpx.Response:
@@ -158,6 +161,81 @@ def test_viewer_renders_on_the_shell():
         page = c.get("/viewer").text
     assert "Seren<b>Psycheion</b>" in page and 'id="console"' in page and "loadTouch" in page
     assert "no camera button" in page
+
+
+def test_the_flashlights_night_ceiling_has_a_slider_that_starts_hidden():
+    # The slider ships hidden and the script shows it only for a night that carries a `light`.
+    with client(Body()) as c:
+        page = c.get("/viewer").text
+    assert 'id="nightLightRow" hidden' in page and 'id="nightLight"' in page
+    # and it says it is a ceiling: a slider with the flashlight's name on it reads as its brightness
+    assert 'id="nightLightNote" hidden' in page and "A ceiling, not a brightness" in page
+    assert '$("nightLightRow").hidden = $("nightLightNote").hidden = n.light == null' in page
+    assert "label.slider[hidden] { display:none; }" in page
+
+
+def test_the_flashlights_night_ceiling_reaches_the_page_and_the_voice_server(monkeypatch):
+    # What the voice server keeps is what the page is handed, not the shape's default,
+    # and a change goes to the server as night.light.
+    kept = json.loads(json.dumps(VOICE_SETTINGS))
+    kept["night"]["light"] = 12
+    monkeypatch.setitem(globals(), "VOICE_SETTINGS", kept)
+    body = Body()
+    with client(body) as c:
+        seen = c.get("/api/soma").json()["voice_settings"]["night"]
+        c.post("/api/soma/voice/settings", json={"night": {"light": 20}})
+    assert seen["light"] == 12
+    sent = [json.loads(b) for who, m, p, b in body.seen if who == "voice" and m == "POST"]
+    assert sent == [{"night": {"light": 20}}]
+
+
+MAP_FIRMWARE = {"ok": True, "kinds": ["switch", "pwm", "i2c"], "appendages": [
+    {"name": "light", "kind": "pwm", "ok": True, "provides": ["light"], "pins": {"en": 9}, "actions": ["on", "off", "level"],
+     "night": {"default": 28, "holding": 28}, "state": {"on": False, "level": 20, "msLeft": 0, "lightPercent": 1.6}},
+    {"name": "fan", "kind": "i2c", "ok": True, "provides": ["airflow"], "actions": ["on", "off", "level"],
+     "night": {"default": 20, "holding": 100}, "state": {"on": True, "level": 30, "msLeft": 240000, "rpm": 3720}},
+    {"name": "buzzer", "kind": "switch", "ok": True, "provides": [], "actions": ["on", "off"]},
+    {"name": "smoke", "kind": "pwm", "ok": False, "error": "pin 1 is the body's", "night": {"default": 10, "holding": 10}},
+]}
+
+
+def test_appendage_ceilings_come_from_what_the_robot_reports():
+    # One entry per working appendage whose file takes a night ceiling: none without `night`, none refused.
+    with client(Body(appendages=MAP_FIRMWARE)) as c:
+        r = c.get("/api/soma/appendages").json()
+    assert r["ceilings"] == {"light": {"default": 28, "holding": 28}, "fan": {"default": 20, "holding": 100}}
+    assert [a["name"] for a in r["appendages"]] == ["light", "fan", "buzzer", "smoke"] and "i2c" in r["kinds"]
+    assert r["appendages"][1]["state"]["rpm"] == 3720          # a kind's own reading rides through
+
+
+def test_a_firmware_without_the_map_gives_no_ceilings_and_no_error():
+    # Today's flashlight-only slice: no `night` on the appendage, so the card keeps night.light's slider.
+    slice_one = {"ok": True, "appendages": [{"name": "light", "kind": "flashlight", "ok": True, "pins": {"en": 9}}]}
+    with client(Body(appendages=slice_one)) as c:
+        assert c.get("/api/soma/appendages").json()["ceilings"] == {}
+    with client(Body()) as c:                                   # older still: no route at all
+        r = c.get("/api/soma/appendages")
+    assert r.status_code == 200 and r.json()["ceilings"] == {}
+    with client(Body(robot_up=False)) as c:                     # but a robot that's down is said to be down
+        assert c.get("/api/soma/appendages").status_code >= 500
+
+
+def test_the_night_card_draws_appendage_sliders_only_from_reported_ceilings():
+    with client(Body()) as c:
+        page = c.get("/viewer").text
+    assert 'id="nightAppendages"' in page and 'id="nightAppendagesNote" hidden' in page
+    assert "fillNightAppendages(n, night)" in page and 'api("/api/soma/appendages")' in page
+    assert "night({ appendages: { [name]: null } })" in page     # Default hands it back to its file
+    assert "flashlight" not in page.split("async function fillNightAppendages", 1)[1].split("function somaDown", 1)[0]
+
+
+def test_an_appendage_ceiling_goes_to_the_voice_server_as_the_map():
+    body = Body()
+    with client(body) as c:
+        c.post("/api/soma/voice/settings", json={"night": {"appendages": {"fan": 15}}})
+        c.post("/api/soma/voice/settings", json={"night": {"appendages": {"fan": None}}})
+    sent = [json.loads(b) for who, m, p, b in body.seen if who == "voice" and m == "POST"]
+    assert sent == [{"night": {"appendages": {"fan": 15}}}, {"night": {"appendages": {"fan": None}}}]
 
 
 def test_root_is_the_family_info_route():
